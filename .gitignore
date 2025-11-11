@@ -40,8 +40,8 @@ coverage/
 .cache/
 
 # Kubernetes secrets (if accidentally generated locally)
-*.secret.yaml
-*-secret.yaml
+# *.secret.yaml
+# *-secret.yaml
 
 # Docker
 .dockerignore
