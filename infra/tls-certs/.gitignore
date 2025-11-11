@@ -1,0 +1,6 @@
+# Ignore all PEM files (TLS certificates and private keys)
+*.pem
+
+# Keep this directory in git but not the certificates
+!.gitignore
+!README.md

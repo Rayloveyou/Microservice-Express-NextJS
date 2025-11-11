@@ -1,0 +1,51 @@
+apiVersion: skaffold/v2beta28
+kind: Config
+deploy:
+  kubectl:
+    manifests:
+      - ./infra/k8s/*
+build:
+  local:
+    push: false
+  artifacts:
+    # Auth Service
+    - image: datnx/auth
+      context: auth
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: 'src/**/*.ts'
+            dest: /app/src
+    # Product Service
+    - image: datnx/product
+      context: products
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: 'src/**/*.ts'
+            dest: /app/src
+    # Order Service
+    - image: datnx/order
+      context: orders
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: 'src/**/*.ts'
+            dest: /app/src
+    # Client Service
+    - image: datnx/client
+      context: client
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        infer:
+          - 'pages/**'
+          - 'components/**'
+          - 'styles/**'
+          - 'public/**'
+          - 'next.config.mjs'
+          - 'api/**'
+          - 'hooks/**'
