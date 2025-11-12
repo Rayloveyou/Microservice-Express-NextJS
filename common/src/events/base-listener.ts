@@ -14,7 +14,7 @@ export abstract class Listener<T extends Event> {
     abstract queueGroupName: string // Queue group name
 
     abstract onMessage(data: T['data'], msg: Message): void // Function to handle message
-    private client: Stan // Stan to pre-initialize to NATS client
+    protected client: Stan // Stan to pre-initialize to NATS client, define as protected to make it accessible in child classes
     protected ackWait = 5 * 1000 // 5 seconds
 
 
