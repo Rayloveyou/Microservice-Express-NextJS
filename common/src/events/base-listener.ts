@@ -42,7 +42,7 @@ export abstract class Listener<T extends Event> {
 
         subscription.on('message', (msg: Message) => {
             console.log(
-                `Message received: ${this.subject} / ${this.queueGroupName} #${msg.getSequence()} ${msg.getData()}`
+                `Message received: ${this.subject} / ${this.queueGroupName}`
             )
 
             const parsedData = this.parseMessage(msg)
