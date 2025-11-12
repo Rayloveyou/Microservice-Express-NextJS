@@ -2,6 +2,7 @@ import request from 'supertest'
 import { app } from '../../app'
 import mongoose from 'mongoose'
 import { natsWrapper } from '../../nats-wrapper'
+import { Product } from '../../models/product'
 
 it('returns a 404 if not found', async () => {
 
@@ -125,4 +126,35 @@ it('publishes an event', async () => {
         .expect(200)
 
     expect(natsWrapper.client.publish).toHaveBeenCalled()
+})
+
+it('rejects updates if the product is reserved', async () => {
+    const cookie = global.signin() 
+    const response =  await request(app)
+        .post('/api/products')
+        .set('Cookie',cookie )
+        .send({
+            title: 'Test Product',
+            price: 100
+        })
+
+    const product = await Product.findById(response.body.id)
+
+    product!.orderId = new mongoose.Types.ObjectId().toHexString()
+
+    // update the product to be reserved by setting the orderId
+    product?.set({
+        orderId: product.orderId
+    })
+
+    await product!.save()
+
+    await request(app)
+        .put(`/api/products/${response.body.id}`)
+        .set('Cookie', cookie)
+        .send({
+            title: 'Test Product updated',
+            price: 1000
+        })
+        .expect(400)
 })

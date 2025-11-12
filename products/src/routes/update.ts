@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { body } from 'express-validator'
-import { requireAuth, validateRequest, NotFoundError, NotAuthorizedError } from '@datnxtickets/common'
+import { requireAuth, validateRequest, NotFoundError, NotAuthorizedError, BadRequestError } from '@datnxtickets/common'
 import { Product } from '../models/product'
 import mongoose from 'mongoose'
 import { ProductUpdatedPublisher } from '../events/publishers/product-updated-publisher'
@@ -24,6 +24,11 @@ router.put('/api/products/:id', requireAuth, [
         throw new NotFoundError()
     }
 
+    // Check if the product is reserved
+    if (product.orderId) {
+        throw new BadRequestError('Cannot edit a reserved product')
+    }
+    
     // Check if the user is the owner of the product
     if (product.userId !== req.currentUser!.id) {
         throw new NotAuthorizedError()

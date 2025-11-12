@@ -5,7 +5,7 @@ import { app } from './app'
 import { natsWrapper } from './nats-wrapper'
 import { ProductCreatedListener } from './events/listeners/product-created-listener'
 import { ProductUpdatedListener } from './events/listeners/product-updated-listener'
-
+import { ExpirationCompleteListener } from './events/listeners/expiration-complete-listener'
 const requireEnv = (key: string) => {
   const value = process.env[key]
   if (!value) {
@@ -30,9 +30,12 @@ const connectNats = async (): Promise<void> => {
 
     process.on('SIGINT', () => natsWrapper.client.close())
     process.on('SIGTERM', () => natsWrapper.client.close())
-
+    
+    // Initialize instance of the listener and Listen to events
     new ProductCreatedListener(natsWrapper.client).listen()
     new ProductUpdatedListener(natsWrapper.client).listen()
+    new ExpirationCompleteListener(natsWrapper.client).listen()
+
   } catch (err) {
     console.error('NATS connection failed:', err)
     console.log('Retrying in 5 seconds...')

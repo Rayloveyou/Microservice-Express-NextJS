@@ -14,7 +14,8 @@ interface ProductDoc extends mongoose.Document {
     title: string
     price: number
     userId: string
-    version: number
+    version: number,
+    orderId?: string
 }
 
 // Interface ProductModel: Mô tả Model Product với phương thức build
@@ -35,6 +36,10 @@ const productSchema = new mongoose.Schema({
     userId: {
         type: String,
         required: true
+    },
+    orderId: {
+        // Optional field, only exists if the product is reserved by an order
+        type: String
     }
 }, {
     toJSON: {

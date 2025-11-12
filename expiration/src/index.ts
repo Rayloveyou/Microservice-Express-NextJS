@@ -1,10 +1,8 @@
 // Load environment variables from .env when running locally
 import 'dotenv/config'
-import mongoose from 'mongoose'
-import { app } from './app'
 import { natsWrapper } from './nats-wrapper'
 import { OrderCreatedListener } from './events/listeners/order-created-listener'
-import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
+
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -33,7 +31,7 @@ const connectNats = async (): Promise<void> => {
 
     // Initialize instance of the listener and Listen to events
     new OrderCreatedListener(natsWrapper.client).listen()
-    new OrderCancelledListener(natsWrapper.client).listen()
+
   } catch (err) {
     console.error('NATS connection failed:', err)
     console.log('Retrying in 5 seconds...')
@@ -42,29 +40,12 @@ const connectNats = async (): Promise<void> => {
   }
 }
 
-const connectMongo = async (): Promise<void> => {
-  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/auth?authSource=admin`
 
-  try {
-    await mongoose.connect(mongoUri)
-    console.log('Connected to MongoDB')
-  } catch (err) {
-    console.error('MongoDB connection failed:', err)
-    console.log('Retrying in 5 seconds...')
-    await new Promise(resolve => setTimeout(resolve, 5000))
-    return connectMongo() // Retry recursively
-  }
-}
 
 const start = async () => {
-  requireEnv('JWT_KEY')
 
   await connectNats()
-  await connectMongo()
 
-  app.listen(3000, () => {
-    console.log('Product service listening on port 3000!!!!');
-  })
 }
 
 start()

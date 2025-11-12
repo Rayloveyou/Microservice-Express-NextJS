@@ -13,28 +13,16 @@ build:
       context: auth
       docker:
         dockerfile: Dockerfile
-      sync:
-        manual:
-          - src: 'src/**/*.ts'
-            dest: /app/src
     # Product Service
     - image: datnx/product
       context: products
       docker:
         dockerfile: Dockerfile
-      sync:
-        manual:
-          - src: 'src/**/*.ts'
-            dest: /app/src
     # Order Service
     - image: datnx/order
       context: orders
       docker:
         dockerfile: Dockerfile
-      sync:
-        manual:
-          - src: 'src/**/*.ts'
-            dest: /app/src
     # Client Service
     - image: datnx/client
       context: client
@@ -49,3 +37,8 @@ build:
           - 'next.config.mjs'
           - 'api/**'
           - 'hooks/**'
+    # Expiration Service
+    - image: datnx/expiration
+      context: expiration
+      docker:
+        dockerfile: Dockerfile
