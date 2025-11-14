@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-mongo-depl
+  name: auth-mongo-depl
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: product-mongo
+      app: auth-mongo
   template:
     metadata:
       labels:
-        app: product-mongo
+        app: auth-mongo
     spec:
       containers:
       - name: mongodb
@@ -19,12 +19,12 @@ spec:
         - name: MONGO_INITDB_ROOT_USERNAME
           valueFrom:
             secretKeyRef:
-              name: mongo-product-secret
+              name: mongo-secret
               key: username
         - name: MONGO_INITDB_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mongo-product-secret
+              name: mongo-secret
               key: password
         resources:
           requests:
@@ -42,12 +42,33 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-mongo-svc
+  name: auth-mongo-svc
 spec:
   selector:
-    app: product-mongo  
+    app: auth-mongo  
   ports:
   - name: mongodb
     port: 27017
     targetPort: 27017
   type: ClusterIP
+---
+## AUTH MONGO SECRET AND CONFIGMAP
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongo-auth-secret
+type: Opaque
+data:
+  # username: admin (base64 encoded)
+  username: YWRtaW4=
+  # password: admin (base64 encoded)
+  password: YWRtaW4=
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-auth-config
+data:
+  MONGO_HOST: auth-mongo-svc
+  MONGO_PORT: "27017"

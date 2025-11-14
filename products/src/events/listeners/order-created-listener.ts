@@ -8,8 +8,13 @@ export class OrderCreatedListener extends Listener<OrderCreatedEvent> {
     readonly subject = Subjects.OrderCreated
     queueGroupName = queueGroupName
     async onMessage(data: OrderCreatedEvent['data'], msg: Message) {
+        const productId = data.product.id
+        if (typeof productId !== 'string' || productId.length !== 24) {
+            console.error('Invalid productId in OrderCreated event:', productId)
+            return msg.ack()
+        }
         // Find the ticket that the order is reserving
-        const product = await Product.findById(data.product.id)
+        const product = await Product.findById(productId)
 
         // If no ticket, throw error
         if (!product) {

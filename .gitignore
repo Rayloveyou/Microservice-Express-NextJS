@@ -49,3 +49,6 @@ coverage/
 # Misc
 .next/
 out/
+
+#Secret
+*-secret.yaml

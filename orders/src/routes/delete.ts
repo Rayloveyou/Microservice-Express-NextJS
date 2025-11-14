@@ -36,7 +36,8 @@ router.delete('/api/orders/:id', requireAuth, async (req: Request, res: Response
         id: order.id,
         version: order.version,
         product: {
-            id: order.product.id,
+            // Use raw ObjectId -> hex string; avoid .id which returns binary buffer string
+            id: (order.product as any)._id ? (order.product as any)._id.toString() : order.product.toString(),
         }
     })
     res.status(204).send(order)

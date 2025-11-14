@@ -3,9 +3,9 @@
 A **modern event-driven ticketing platform** for selling concert, sports, and event tickets online. Built with **Node.js**, **TypeScript**, **React (Next.js)**, **MongoDB**, **Redis**, and **Kubernetes**, this platform demonstrates production-grade microservices patterns including:
 
 - 🔐 **User Authentication & Session Management**
-- 🎟️ **Ticket Listing & Purchase**
+- 🎟️ **Product Listing & Purchase**
 - ⏰ **Automatic Order Expiration** (15-minute reservation window)
-- 💳 **Payment Processing** (Stripe integration - planned)
+- 💳 **Payment Processing** with Stripe integration
 - 📨 **Event-Driven Architecture** with NATS Streaming
 - 🔄 **Real-time Data Synchronization** across services
 - 🚀 **Scalable Infrastructure** with Kubernetes
@@ -52,6 +52,12 @@ A **modern event-driven ticketing platform** for selling concert, sports, and ev
         │            ┌──────────▼──────────┐            │
         │            │ Expiration Service  │            │
         │            │   + Redis (Bull)    │            │
+        │            └──────────┬──────────┘            │
+        │                       │                        │
+        │            ┌──────────▼──────────┐            │
+        │            │ Payments Service    │            │
+        │            │   + MongoDB         │            │
+        │            │   + Stripe API      │            │
         │            └──────────┬──────────┘            │
         │                       │                        │
         └───────────────────────┼────────────────────────┘
@@ -182,7 +188,30 @@ A **modern event-driven ticketing platform** for selling concert, sports, and ev
 
 ---
 
-### 5. **Client** (`/client`)
+### 5. **Payments Service** (`/payments`)
+- Process payments via Stripe Charges API
+- Validate order ownership and status
+- Prevent payment for cancelled orders
+- Notify orders service on successful payment
+
+**Routes:**
+- `POST /api/payments` - Create payment charge
+
+**Events Published:**
+- `payment:created` - Notify order completion
+
+**Events Consumed:**
+- `order:created` - Replicate order data
+- `order:cancelled` - Update local order status
+
+**Technology:**
+- Stripe SDK for payment processing
+- MongoDB for payment and order records
+- Real Stripe API integration (test mode)
+
+---
+
+### 6. **Client** (`/client`)
 - Server-Side Rendering (SSR) with Next.js
 - Cookie-based authentication
 - Responsive UI with Bootstrap
@@ -256,6 +285,43 @@ A **modern event-driven ticketing platform** for selling concert, sports, and ev
   "__v": 0
 }
 ```
+
+---
+
+### **Payments Service Database** (MongoDB: `payments`)
+
+#### Collection: `payments`
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `_id` | ObjectId | ✅ | Auto-generated MongoDB ID |
+| `orderId` | String | ✅ | Reference to order ID |
+| `stripeId` | String | ✅ | Stripe charge ID (e.g., `ch_3STIK6...`) |
+| `__v` | Number | ✅ | Mongoose version key |
+
+**Example Document:**
+```json
+{
+  "_id": "709f191e810c19729de860ec",
+  "orderId": "608f191e810c19729de860eb",
+  "stripeId": "ch_3STIK6RRsPUjHZ5Y10uLGpsR",
+  "__v": 0
+}
+```
+
+#### Collection: `orders` (Replica)
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `_id` | String | ✅ | Order ID (from Orders Service) |
+| `userId` | String | ✅ | User who owns the order |
+| `price` | Number | ✅ | Order amount |
+| `status` | String (Enum) | ✅ | `created`, `cancelled`, `awaiting:payment`, `complete` |
+| `version` | Number | ✅ | Sync version with Orders Service |
+| `__v` | Number | ✅ | Mongoose version key |
+
+**Purpose:** 
+- Local cache of orders for payment validation
+- Prevents cross-service database queries
+- Updated via `order:created` and `order:cancelled` events
 
 ---
 
@@ -369,9 +435,10 @@ interface ExpirationJob {
 |---------------|-----------|-----------|---------|---------|
 | `product:created` | Products | Orders | `{ id, title, price, userId, version, orderId? }` | Replicate new product to Orders DB |
 | `product:updated` | Products | Orders | `{ id, title, price, userId, version, orderId? }` | Sync product changes |
-| `order:created` | Orders | Products, Expiration | `{ id, status, userId, expiresAt, version, product: { id } }` | Lock product, schedule expiration |
-| `order:cancelled` | Orders | Products | `{ id, version, product: { id } }` | Release product reservation |
-| `expiration:complete` | Expiration | Orders | `{ orderId }` | Trigger order cancellation |
+| `order:created` | Orders | Products, Expiration, Payments | `{ id, status, userId, expiresAt, version, product: { id } }` | Lock product, schedule expiration, replicate to payments |
+| `order:cancelled` | Orders | Products, Payments | `{ id, version, product: { id } }` | Release product reservation, update payment records |
+| `expiration:complete` | Expiration | Orders | `{ orderId }` | Trigger order cancellation if not paid |
+| `payment:created` | Payments | Orders | `{ id, orderId, stripeId }` | Mark order as complete |
 
 ---
 
@@ -482,7 +549,30 @@ interface ExpirationJob {
 **Triggered When:** Bull queue processes expired job (15 min after order creation)
 
 **Consumers:**
-- **Orders Service** → Cancels order, publishes `order:cancelled`
+- **Orders Service** → Checks order status:
+  - If `status === complete` → Ignores (already paid)
+  - Otherwise → Cancels order, publishes `order:cancelled`
+
+---
+
+#### `payment:created` Event
+```typescript
+{
+  subject: "payment:created",
+  data: {
+    id: "709f191e810c19729de860ec",
+    orderId: "608f191e810c19729de860eb",
+    stripeId: "ch_3STIK6RRsPUjHZ5Y10uLGpsR"
+  }
+}
+```
+
+**Triggered When:** User successfully pays via `POST /api/payments`
+
+**Consumers:**
+- **Orders Service** → Updates order status: `created` → `complete`
+
+**Important:** Once order is `complete`, expiration events are ignored!
 
 ---
 
@@ -786,7 +876,11 @@ kubectl create secret tls ticketing-tls \
 
 6. **Create Kubernetes secrets:**
 ```bash
+# JWT secret for auth
 kubectl create secret generic jwt-secret --from-literal=JWT_KEY=your-secret-key
+
+# Stripe secret for payments (use your test key)
+kubectl create secret generic stripe-secret --from-literal=STRIPE_SECRET_KEY=sk_test_your_stripe_key
 ```
 
 7. **Start development with Skaffold:**
@@ -1397,6 +1491,13 @@ Each service deploys with:
 - `NATS_CLUSTER_ID` - `ticketing`
 - `NATS_CLIENT_ID` - Auto-generated from pod name
 
+**Payments Service:**
+- `MONGO_URI` - `mongodb://payment-mongo-srv:27017/payments`
+- `NATS_URL` - `http://nats-srv:4222`
+- `NATS_CLUSTER_ID` - `ticketing`
+- `NATS_CLIENT_ID` - Auto-generated from pod name
+- `STRIPE_SECRET_KEY` - Stripe API key (from Secret) - test mode: `sk_test_...`
+
 **Client:**
 - No environment variables (connects via Ingress)
 
@@ -1462,10 +1563,14 @@ npm test -- --coverage
 
 ## 🎨 Future Enhancements
 
-### Planned Services
+### Completed Services ✅
 
-- [x] **Expiration Service** - ✅ Implemented! Auto-cancel orders after 15 minutes using Redis Bull
-- [ ] **Payments Service** - Stripe integration for checkout
+- [x] **Auth Service** - JWT authentication with HTTP-only cookies
+- [x] **Products Service** - Product CRUD with event publishing
+- [x] **Orders Service** - Order management with reservation logic
+- [x] **Expiration Service** - Auto-cancel orders after 15 minutes using Redis Bull
+- [x] **Payments Service** - Stripe Charges API integration (test mode)
+- [x] **Client** - Next.js SSR with Bootstrap UI
 
 ### Infrastructure Improvements
 

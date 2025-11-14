@@ -10,7 +10,13 @@ export class OrderCancelledListener extends Listener<OrderCancelledEvent> {
 
     async onMessage(data: OrderCancelledEvent['data'], msg: Message) {
 
-        const product = await Product.findById(data.product.id)
+        const productId = data.product.id
+        if (typeof productId !== 'string' || productId.length !== 24) {
+            console.error('Invalid productId in OrderCancelled event:', productId)
+            return msg.ack() // ack to skip bad event
+        }
+
+        const product = await Product.findById(productId)
 
         if (!product) {
             throw new Error('Product not found')

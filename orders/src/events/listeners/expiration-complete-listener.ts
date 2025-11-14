@@ -15,6 +15,11 @@ export class ExpirationCompleteListener extends Listener<ExpirationCompleteEvent
             throw new Error('Order not found')
         }
 
+        // if the order is already complete , just ack the message
+        if (order.status === OrderStatus.Complete) {
+            return msg.ack()
+        }
+
         // update the status of the order to be cancelled
         order.set({
             status: OrderStatus.Cancelled,
@@ -27,7 +32,7 @@ export class ExpirationCompleteListener extends Listener<ExpirationCompleteEvent
             id: order.id,
             version: order.version,
             product: {
-                id: order.product.id
+                id: (order.product as any)._id ? (order.product as any)._id.toString() : order.product.toString()
             }
         })
 

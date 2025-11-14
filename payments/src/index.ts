@@ -3,10 +3,8 @@ import 'dotenv/config'
 import mongoose from 'mongoose'
 import { app } from './app'
 import { natsWrapper } from './nats-wrapper'
-import { ProductCreatedListener } from './events/listeners/product-created-listener'
-import { ProductUpdatedListener } from './events/listeners/product-updated-listener'
-import { ExpirationCompleteListener } from './events/listeners/expiration-complete-listener'
-import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
+import { OrderCreatedListener } from './events/listeners/order-created-listener'
+import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -32,13 +30,11 @@ const connectNats = async (): Promise<void> => {
 
     process.on('SIGINT', () => natsWrapper.client.close())
     process.on('SIGTERM', () => natsWrapper.client.close())
-    
-    // Initialize instance of the listener and Listen to events
-    new ProductCreatedListener(natsWrapper.client).listen()
-    new ProductUpdatedListener(natsWrapper.client).listen()
-    new ExpirationCompleteListener(natsWrapper.client).listen()
-    new PaymentCreatedListener(natsWrapper.client).listen()
 
+    // Initialize instance of the listener and Listen to events
+    new OrderCreatedListener(natsWrapper.client).listen()
+    new OrderCancelledListener(natsWrapper.client).listen()
+    
   } catch (err) {
     console.error('NATS connection failed:', err)
     console.log('Retrying in 5 seconds...')
@@ -63,12 +59,13 @@ const connectMongo = async (): Promise<void> => {
 
 const start = async () => {
   requireEnv('JWT_KEY')
-
+  requireEnv('STRIPE_SECRET_KEY')
   await connectNats()
   await connectMongo()
 
   app.listen(3000, () => {
-    console.log('Product service listening on port 3000!!!!');
+    const sk = process.env.STRIPE_SECRET_KEY || ''
+    console.log('Payment service listening on port 3000. Stripe key loaded:', sk ? `sk_${sk.slice(3,7)}...` : 'MISSING')
   })
 }
 
