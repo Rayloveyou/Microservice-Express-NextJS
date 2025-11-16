@@ -8,5 +8,6 @@ export interface OrderCancelledEvent {
         product: {
             id: string // productId
         }
+        quantity: number
     }
 }

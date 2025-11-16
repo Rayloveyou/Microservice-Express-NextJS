@@ -8,7 +8,9 @@ export interface ProductUpdatedEvent {
         version: number
         title: string
         price: number
-        userId: string,
+        userId: string
+        quantity: number
+        imageUrl?: string
         orderId?: string // Optional field
     }
 }

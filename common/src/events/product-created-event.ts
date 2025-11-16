@@ -10,5 +10,7 @@ export interface ProductCreatedEvent {
         title: string
         price: number
         userId: string
+        quantity: number
+        imageUrl?: string
     }
 }
