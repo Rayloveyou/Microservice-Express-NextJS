@@ -6,6 +6,8 @@ interface ProductAttrs {
     title: string
     price: number
     userId: string
+    quantity: number
+    imageUrl?: string
 }
 
 
@@ -14,8 +16,9 @@ interface ProductDoc extends mongoose.Document {
     title: string
     price: number
     userId: string
-    version: number,
-    orderId?: string
+    version: number
+    quantity: number
+    imageUrl?: string
 }
 
 // Interface ProductModel: Mô tả Model Product với phương thức build
@@ -37,9 +40,14 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    orderId: {
-        // Optional field, only exists if the product is reserved by an order
-        type: String
+    quantity: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    imageUrl: {
+        type: String,
+        required: false
     }
 }, {
     toJSON: {

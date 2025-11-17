@@ -1,4 +1,4 @@
-import { Listener, OrderCreatedEvent, Subjects } from "@datnxtickets/common"
+import { Listener, OrderCreatedEvent, Subjects } from "@datnxecommerce/common"
 import { queueGroupName } from "./queue-group-name"
 import { Message } from "node-nats-streaming"
 import { Product } from "../../models/product"
@@ -8,38 +8,9 @@ export class OrderCreatedListener extends Listener<OrderCreatedEvent> {
     readonly subject = Subjects.OrderCreated
     queueGroupName = queueGroupName
     async onMessage(data: OrderCreatedEvent['data'], msg: Message) {
-        const productId = data.product.id
-        if (typeof productId !== 'string' || productId.length !== 24) {
-            console.error('Invalid productId in OrderCreated event:', productId)
-            return msg.ack()
-        }
-        // Find the ticket that the order is reserving
-        const product = await Product.findById(productId)
-
-        // If no ticket, throw error
-        if (!product) {
-            throw new Error('Product not found')
-        }
-
-        // Mark the ticket as being reserved by setting its orderId property
-        product.set({
-            orderId: data.id
-        })
-
-        // Save the ticket
-        await product.save()
-
-        // publish an event that a ticket was updated after being reserved
-        new ProductUpdatedPublisher(this.client).publish({
-            id: product.id,
-            title: product.title,
-            price: product.price,
-            userId: product.userId,
-            ...(product.orderId && { orderId: product.orderId }), // if product.orderId exists, add it to the object 
-            version: product.version
-        })
-
-        // ack the message
+        // Order created - do nothing with product quantities
+        // Product quantities will be reduced only when payment completes
+        console.log('Order created:', data.id, '- awaiting payment')
         msg.ack()
     } 
 }

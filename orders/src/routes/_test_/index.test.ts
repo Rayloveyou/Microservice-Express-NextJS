@@ -10,7 +10,8 @@ const buildTicket = async (number: number) => {
     const product = Product.build({
         id: new mongoose.Types.ObjectId().toHexString(),
         title: `Test Product ${number}`,
-        price: 100
+        price: 100,
+        quantity: 10
     })
     await product.save()
     return product
@@ -30,23 +31,23 @@ it('fetches the orders for a particular user', async () => {
         .post('/api/orders')
         .set('Cookie', user1Cookie)
         .send({
-            productId: product1.id
+            items: [{ productId: product1.id, quantity: 1 }]
         })
         .expect(201)
 
-    // Create two orders as User #2
+        // Create two orders as User #2
     const { body: order1 } = await request(app)
         .post('/api/orders')
         .set('Cookie', user2Cookie)
         .send({
-            productId: product2.id
+            items: [{ productId: product2.id, quantity: 1 }]
         })
         .expect(201)
     const { body: order2 } = await request(app)
         .post('/api/orders')
         .set('Cookie', user2Cookie)
         .send({
-            productId: product3.id
+            items: [{ productId: product3.id, quantity: 1 }]
         })
         .expect(201)
 

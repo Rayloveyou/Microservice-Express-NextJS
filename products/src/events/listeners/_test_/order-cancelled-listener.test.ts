@@ -2,34 +2,33 @@ import { natsWrapper } from "../../../nats-wrapper"
 import { OrderCancelledListener } from "../order-cancelled-listener"
 import { Product } from "../../../models/product"
 import mongoose from "mongoose"
-import { OrderCancelledEvent } from "@datnxtickets/common"
+import { OrderCancelledEvent } from "@datnxecommerce/common"
 
 const setup = async () => {
     // Create an instance of the listener
     const listener = new OrderCancelledListener(natsWrapper.client)
 
-    const orderId = new mongoose.Types.ObjectId().toHexString()
-    // Create and save a product
+    // Create and save a product with reduced quantity (simulating it was ordered)
     const product = Product.build({
         title: 'concert',
         price: 20,
-        userId: 'asdf'
-
-    })
-
-    product.set({
-        orderId
+        userId: 'asdf',
+        quantity: 5  // Product has 5 remaining after some orders
     })
 
    await product.save()
 
-    // Create a fake data object
+    // Create a fake data object - an order of quantity 2 was cancelled
     const data: OrderCancelledEvent['data'] = {
-        id: product.id,
-        version: 0,
-        product: {
-            id: product.id
-        }
+        id: new mongoose.Types.ObjectId().toHexString(),
+        version: 1,
+        items: [
+            {
+                productId: product.id,
+                quantity: 2
+            }
+        ],
+        total: 40
     }
 
     // Create a fake message object
@@ -38,23 +37,26 @@ const setup = async () => {
         ack: jest.fn()
     }
 
-    return { listener, data, msg }
+    return { listener, data, msg, product }
 }
 
-it('updates the status of the product, publishes an event, and acks the message', async () => {
-    const { listener, data, msg } = await setup()
+it('restores the product quantity, publishes an event, and acks the message', async () => {
+    const { listener, data, msg, product } = await setup()
+
+    // Initial quantity is 5
+    expect(product.quantity).toEqual(5)
 
     // Call the onMessage function with the data object + message object
     await listener.onMessage(data, msg)
 
-    // Write assertions to make sure a ticket was created!
-    const product = await Product.findById(data.id)
+    // Find the updated product
+    const updatedProduct = await Product.findById(product.id)
 
-    // expect product orderId to be undefined
-    expect(product!.orderId).not.toBeDefined()
+    // Quantity should be restored: 5 + 2 = 7
+    expect(updatedProduct!.quantity).toEqual(7)
 
     expect(msg.ack).toHaveBeenCalled()
 
-    // publish an event that a ticket was updated
+    // publish an event that a product was updated
     expect(natsWrapper.client.publish).toHaveBeenCalled()
 })

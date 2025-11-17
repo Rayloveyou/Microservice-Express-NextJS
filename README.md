@@ -1,592 +1,246 @@
-# 🎫 Ticketing Microservices Platform
+# 🛒 E‑Commerce Microservices (Production‑like, Minikube)
 
-A **modern event-driven ticketing platform** for selling concert, sports, and event tickets online. Built with **Node.js**, **TypeScript**, **React (Next.js)**, **MongoDB**, **Redis**, and **Kubernetes**, this platform demonstrates production-grade microservices patterns including:
+A complete multi‑service e‑commerce system running on Kubernetes (Minikube) with TLS via mkcert. The system uses event‑driven communication (NATS), per‑service MongoDB, and a Next.js client. The architecture has been redesigned to remove expiration/locking: stock is only decremented after Stripe payment succeeds.
 
-- 🔐 **User Authentication & Session Management**
-- 🎟️ **Product Listing & Purchase**
-- ⏰ **Automatic Order Expiration** (15-minute reservation window)
-- 💳 **Payment Processing** with Stripe integration
-- 📨 **Event-Driven Architecture** with NATS Streaming
-- 🔄 **Real-time Data Synchronization** across services
-- 🚀 **Scalable Infrastructure** with Kubernetes
+Highlights
+- No product locking or expiration service
+- Stripe Elements on client; PaymentCreated drives inventory updates
+- Shared NPM package: `@datnxecommerce/common`
+- Ingress domain: `ecommerce.local` (TLS via mkcert)
+- Dev loop: Skaffold, containers built in prod mode
 
----
 
-## 📋 Table of Contents
+## Contents
+- Architecture & Directory
+- Services (responsibilities, routes, envs, DB schemas, events)
+- Events (contracts)
+- Local dev on Minikube with mkcert
+- Secrets and credentials
+- Postman test scenarios (end‑to‑end)
+- Kubernetes resources & ingress
+- Troubleshooting
 
-- [Architecture Overview](#-architecture-overview)
-- [Tech Stack](#-tech-stack)
-- [Services](#-services)
-- [Database Schemas](#-database-schemas)
-- [Event Architecture](#-event-architecture)
-- [Complete Flow Diagrams](#-complete-flow-diagrams)
-- [Getting Started](#-getting-started)
-- [Development](#-development)
-- [Testing with Postman](#-testing-with-postman)
-- [Deployment](#-deployment)
-- [Security Features](#-security-features)
-- [Future Enhancements](#-future-enhancements)
 
----
-
-## 🏗 Architecture Overview
+## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                      Client (Next.js SSR)                            │
-│                    https://ticketing.local                           │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │
-                      ┌──────────▼──────────┐
-                      │   Ingress NGINX     │
-                      │   (SSL/TLS)         │
-                      └──────────┬──────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-┌───────▼────────┐   ┌──────────▼─────────┐   ┌─────────▼────────┐
-│  Auth Service  │   │ Products Service   │   │  Orders Service  │
-│   + MongoDB    │   │   + MongoDB        │   │   + MongoDB      │
-└───────┬────────┘   └──────────┬─────────┘   └─────────┬────────┘
-        │                       │                        │
-        │            ┌──────────▼──────────┐            │
-        │            │ Expiration Service  │            │
-        │            │   + Redis (Bull)    │            │
-        │            └──────────┬──────────┘            │
-        │                       │                        │
-        │            ┌──────────▼──────────┐            │
-        │            │ Payments Service    │            │
-        │            │   + MongoDB         │            │
-        │            │   + Stripe API      │            │
-        │            └──────────┬──────────┘            │
-        │                       │                        │
-        └───────────────────────┼────────────────────────┘
-                                │
-                      ┌─────────▼──────────┐
-                      │  NATS Streaming    │
-                      │   (Event Bus)      │
-                      └────────────────────┘
+Browser (Next.js) → NGINX Ingress (TLS, ecommerce.local)
+                             │
+        ┌──────────┬─────────┼──────────┬──────────┬──────────┐
+        │          │         │          │          │          │
+      Auth      Products    Orders    Payments     Cart      NATS
+      Mongo       Mongo      Mongo      Mongo      Mongo     (bus)
+        ▲           ▲          ▲          ▲          ▲          
+        └─────────────── Event messages over NATS ─────────────┘
 ```
 
-**Key Design Patterns:**
-- ✅ **Microservices Architecture** - Independent, loosely coupled services
-- ✅ **Event-Driven Communication** - Asynchronous messaging via NATS Streaming
-- ✅ **Database Per Service** - Each service owns its data (MongoDB)
-- ✅ **Message Queue** - Redis Bull for delayed job processing
-- ✅ **API Gateway Pattern** - Ingress as single entry point
-- ✅ **CQRS** - Command Query Responsibility Segregation
-- ✅ **Optimistic Concurrency Control** - Version-based conflict resolution
-- ✅ **Saga Pattern** - Distributed transactions via events
+Directory (top‑level)
+```
+auth/ products/ orders/ payments/ cart/ client/ common/ infra/k8s/ skaffold.yaml
+```
 
----
 
-## 🛠 Tech Stack
+## Services (deep dive)
 
-### Backend
-- **Runtime**: Node.js 20+ with TypeScript
-- **Framework**: Express.js 5
-- **Database**: MongoDB (via Mongoose)
-- **Cache/Queue**: Redis (Bull for job scheduling)
-- **Message Broker**: NATS Streaming Server
-- **Authentication**: JWT with HTTP-only cookies
-- **Validation**: Express-validator
-- **Testing**: Jest + Supertest + MongoDB Memory Server
+Shared NPM package: `@datnxecommerce/common`
+- Errors, middlewares (auth/validation), event base classes & typings.
 
-### Frontend
-- **Framework**: Next.js 14 (Pages Router)
-- **Language**: JavaScript (React)
-- **HTTP Client**: Axios
-- **Styling**: Bootstrap 5
+Auth (image `datnx/auth`)
+- Routes: POST `/api/users/signup`, POST `/signin`, POST `/signout`, GET `/currentuser`
+- Env: `JWT_KEY`, Mongo creds via ConfigMap/Secret
+- DB (Mongo `auth`): `users` { _id, email unique, password, __v }
+- Events: none
 
-### Infrastructure
-- **Orchestration**: Kubernetes (Minikube for local dev)
-- **Container Runtime**: Docker
-- **Ingress**: NGINX Ingress Controller
-- **TLS**: Self-signed certificates
-- **CI/CD**: Skaffold for hot-reload development
+Products (image `datnx/product`)
+- Routes: `GET /api/products`, `GET /:id`, `POST /api/products`, `PUT /:id`
+- Env: `JWT_KEY`, `NATS_URL`, `NATS_CLUSTER_ID=ticketing`, `NATS_CLIENT_ID` (pod name)
+- DB (Mongo `products`): `products` { _id, title, price, quantity, userId, version, __v }
+- Events: publish ProductCreated/ProductUpdated; consume PaymentCreated (to reduce quantity)
 
-### Shared Libraries
-- **@datnxtickets/common** - NPM package with:
-  - Custom error classes
-  - Express middlewares (auth, validation, error handling)
-  - Event type definitions
-  - NATS base Publisher/Listener classes
+Cart (image `datnx/cart`)
+- Routes: `GET /api/cart`, `POST /api/cart/items`, `DELETE /api/cart/items/:productId`
+- Env: `JWT_KEY`, NATS settings, Mongo creds
+- DB (Mongo `cart`): `carts` { _id, userId, items: [ { productId, quantity } ] }
+- Events: consume PaymentCreated (remove purchased items)
 
----
+Orders (image `datnx/order`)
+- Routes: `POST /api/orders`, `GET /api/orders`, `GET /api/orders/:id`, `DELETE /api/orders/:id`
+- Env: `JWT_KEY`, NATS settings, Mongo creds
+- DB (Mongo `orders`): `orders` { _id, userId, status, items[ { productId, titleSnapshot, priceSnapshot, quantity } ], total, version }
+- Events: publish OrderCreated/OrderCancelled (no expiredAt);
 
-## 🎯 Services
+Payments (image `datnx/payment`)
+- Routes: `POST /api/payments` { token, orderId }
+- Env: `JWT_KEY`, `STRIPE_SECRET_KEY`, NATS settings, Mongo creds
+- DB (Mongo `payments`): `payments` { _id, orderId, stripeId, __v }
+- Events: publish PaymentCreated { orderId, items[], stripeId }
 
-### 1. **Auth Service** (`/auth`)
-- User registration and login
-- JWT token generation
-- Current user session management
-- Password hashing with scrypt
+Client (image `datnx/client`)
+- Next.js 16, production build, custom `server.js`
+- Stripe Elements (`@stripe/react-stripe-js` & `@stripe/stripe-js`)
+- Env: `NEXT_PUBLIC_STRIPE_KEY` injected from K8s `stripe-secret` (publishable)
 
-**Routes:**
-- `POST /api/users/signup` - Register new user
-- `POST /api/users/signin` - Login
-- `POST /api/users/signout` - Logout
-- `GET /api/users/currentuser` - Get current session
+NATS (nats-streaming:0.17.0)
+- Cluster id: `ticketing`, svc `nats-svc` (4222)
 
----
 
-### 2. **Products Service** (`/products`)
-- Create and manage products
-- Ownership validation
-- Publishes events on create/update
-- Optimistic concurrency control
+## Events (contracts)
 
-**Routes:**
-- `POST /api/products` - Create product
-- `GET /api/products` - List all products
-- `GET /api/products/:id` - Get product by ID
-- `PUT /api/products/:id` - Update product (owner only)
-
-**Events Published:**
-- `product:created`
-- `product:updated`
-
----
-
-### 3. **Orders Service** (`/orders`)
-- Create orders for products
-- Prevent double-booking with reservation checks
-- 15-minute expiration window
-- Listens to product events for data replication
-
-**Routes:**
-- `POST /api/orders` - Create order
-- `GET /api/orders` - List user's orders
-- `GET /api/orders/:id` - Get order details
-- `DELETE /api/orders/:id` - Cancel order
-
-**Events Published:**
-- `order:created`
-- `order:cancelled`
-
-**Events Consumed:**
-- `product:created` - Replicate product data
-- `product:updated` - Sync product updates
-
----
-
-### 4. **Expiration Service** (`/expiration`)
-- Automatically cancel unpaid orders after 15 minutes
-- Uses Redis Bull queue for delayed job processing
-- Listens to order creation events
-- Publishes expiration complete events
-
-**Events Consumed:**
-- `order:created` - Schedule expiration job
-
-**Events Published:**
-- `expiration:complete` - Notify when order expires
-
-**Technology:**
-- Redis for job queue storage
-- Bull for job scheduling and processing
-
----
-
-### 5. **Payments Service** (`/payments`)
-- Process payments via Stripe Charges API
-- Validate order ownership and status
-- Prevent payment for cancelled orders
-- Notify orders service on successful payment
-
-**Routes:**
-- `POST /api/payments` - Create payment charge
-
-**Events Published:**
-- `payment:created` - Notify order completion
-
-**Events Consumed:**
-- `order:created` - Replicate order data
-- `order:cancelled` - Update local order status
-
-**Technology:**
-- Stripe SDK for payment processing
-- MongoDB for payment and order records
-- Real Stripe API integration (test mode)
-
----
-
-### 6. **Client** (`/client`)
-- Server-Side Rendering (SSR) with Next.js
-- Cookie-based authentication
-- Responsive UI with Bootstrap
-- Custom `buildClient` for SSR/CSR dual-mode API calls
-
-**Pages:**
-- `/` - Landing page
-- `/auth/signup` - Registration
-- `/auth/signin` - Login
-- `/auth/signout` - Logout
-
----
-
-## � Database Schemas
-
-### **Auth Service Database** (MongoDB: `auth`)
-
-#### Collection: `users`
-| Field | Type | Required | Unique | Description |
-|-------|------|----------|--------|-------------|
-| `_id` | ObjectId | ✅ | ✅ | Auto-generated MongoDB ID |
-| `email` | String | ✅ | ✅ | User email (lowercase, validated) |
-| `password` | String | ✅ | ❌ | Hashed password (scrypt + salt) |
-| `__v` | Number | ✅ | ❌ | Version key for concurrency control |
-
-**Indexes:**
-- `email` (unique)
-
-**Example Document:**
+ProductCreated
 ```json
-{
-  "_id": "507f1f77bcf86cd799439011",
-  "email": "user@example.com",
-  "password": "hashed_password_here",
-  "__v": 0
-}
+{ "id": "...", "title": "...", "price": 999, "quantity": 10, "userId": "...", "version": 0 }
 ```
 
----
-
-### **Products Service Database** (MongoDB: `products`)
-
-#### Collection: `products`
-| Field | Type | Required | Unique | Description |
-|-------|------|----------|--------|-------------|
-| `_id` | ObjectId | ✅ | ✅ | Auto-generated MongoDB ID |
-| `title` | String | ✅ | ❌ | Product/ticket title |
-| `price` | Number | ✅ | ❌ | Price (must be >= 0) |
-| `userId` | String | ✅ | ❌ | Owner's user ID (from JWT) |
-| `orderId` | String | ❌ | ❌ | ID of order reserving this product (null if available) |
-| `version` | Number | ✅ | ❌ | Version for optimistic concurrency control |
-| `__v` | Number | ✅ | ❌ | Mongoose version key |
-
-**Indexes:**
-- `orderId` (for reservation lookup)
-
-**Business Rules:**
-- Product is **reserved** when `orderId` is set
-- Product is **available** when `orderId` is `undefined/null`
-- Price must be positive number
-
-**Example Document:**
+ProductUpdated
 ```json
-{
-  "_id": "507f191e810c19729de860ea",
-  "title": "Taylor Swift Concert - VIP Ticket",
-  "price": 150.00,
-  "userId": "507f1f77bcf86cd799439011",
-  "orderId": undefined,
-  "version": 0,
-  "__v": 0
-}
+{ "id": "...", "title": "...", "price": 899, "quantity": 6, "userId": "...", "version": 2 }
 ```
 
----
-
-### **Payments Service Database** (MongoDB: `payments`)
-
-#### Collection: `payments`
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `_id` | ObjectId | ✅ | Auto-generated MongoDB ID |
-| `orderId` | String | ✅ | Reference to order ID |
-| `stripeId` | String | ✅ | Stripe charge ID (e.g., `ch_3STIK6...`) |
-| `__v` | Number | ✅ | Mongoose version key |
-
-**Example Document:**
+OrderCreated
 ```json
-{
-  "_id": "709f191e810c19729de860ec",
-  "orderId": "608f191e810c19729de860eb",
-  "stripeId": "ch_3STIK6RRsPUjHZ5Y10uLGpsR",
-  "__v": 0
-}
+{ "id": "...", "userId": "...", "status": "Created", "items": [ { "productId": "...", "quantity": 1, "priceSnapshot": 999, "titleSnapshot": "..." } ], "total": 999, "version": 0 }
 ```
 
-#### Collection: `orders` (Replica)
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `_id` | String | ✅ | Order ID (from Orders Service) |
-| `userId` | String | ✅ | User who owns the order |
-| `price` | Number | ✅ | Order amount |
-| `status` | String (Enum) | ✅ | `created`, `cancelled`, `awaiting:payment`, `complete` |
-| `version` | Number | ✅ | Sync version with Orders Service |
-| `__v` | Number | ✅ | Mongoose version key |
-
-**Purpose:** 
-- Local cache of orders for payment validation
-- Prevents cross-service database queries
-- Updated via `order:created` and `order:cancelled` events
-
----
-
-### **Orders Service Database** (MongoDB: `orders`)
-
-#### Collection: `orders`
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `_id` | ObjectId | ✅ | Auto-generated MongoDB ID |
-| `userId` | String | ✅ | ID of user who created the order |
-| `status` | String (Enum) | ✅ | `created`, `cancelled`, `awaiting:payment`, `complete` |
-| `expiresAt` | Date | ✅ | Expiration timestamp (createdAt + 15 minutes) |
-| `product` | Object | ✅ | Embedded product snapshot |
-| `product.id` | String | ✅ | Product ID reference |
-| `product.price` | Number | ✅ | Price at time of order creation |
-| `product.title` | String | ✅ | Product title (denormalized) |
-| `version` | Number | ✅ | Version for optimistic concurrency control |
-| `__v` | Number | ✅ | Mongoose version key |
-
-**Order Status Flow:**
-```
-created → awaiting:payment → complete
-   ↓
-cancelled (via expiration or user action)
-```
-
-**Indexes:**
-- `userId` (for user's order queries)
-- `expiresAt` (for expiration processing)
-
-**Example Document:**
+OrderCancelled
 ```json
-{
-  "_id": "608f191e810c19729de860eb",
-  "userId": "507f1f77bcf86cd799439011",
-  "status": "created",
-  "expiresAt": "2025-11-12T10:15:00.000Z",
-  "product": {
-    "id": "507f191e810c19729de860ea",
-    "title": "Taylor Swift Concert - VIP Ticket",
-    "price": 150.00
-  },
-  "version": 0,
-  "__v": 0
-}
+{ "id": "...", "version": 1 }
 ```
 
-#### Collection: `products` (Replica)
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `_id` | String | ✅ | Product ID (from Products Service) |
-| `title` | String | ✅ | Product title |
-| `price` | Number | ✅ | Current price |
-| `version` | Number | ✅ | Sync version with Products Service |
-| `__v` | Number | ✅ | Mongoose version key |
-
-**Purpose:** 
-- Local cache of products for fast order validation
-- Prevents cross-service database queries
-- Updated via `product:created` and `product:updated` events
-
----
-
-### **Expiration Service** (Redis)
-
-#### Redis Key Pattern: `bull:order:expiration:{jobId}`
-
-**Queue Name:** `order:expiration`
-
-**Job Payload Structure:**
-```typescript
-interface ExpirationJob {
-  orderId: string  // ID of order to expire
-}
-```
-
-**Job Options:**
-```typescript
-{
-  delay: number  // Milliseconds until job execution (typically 900000 = 15 min)
-}
-```
-
-**Example Job:**
+PaymentCreated
 ```json
-{
-  "data": {
-    "orderId": "608f191e810c19729de860eb"
-  },
-  "opts": {
-    "delay": 900000,
-    "timestamp": 1731408000000
-  }
-}
+{ "id": "...", "orderId": "...", "stripeId": "ch_...", "items": [ { "productId": "...", "quantity": 1 } ] }
 ```
 
-**Redis Data Structures:**
-- `bull:order:expiration:id` - Job counter
-- `bull:order:expiration:wait` - Sorted set of waiting jobs
-- `bull:order:expiration:active` - Set of active jobs
-- `bull:order:expiration:completed` - Set of completed jobs
-- `bull:order:expiration:failed` - Set of failed jobs
 
----
+## Local development (Minikube + mkcert)
 
-## 📨 Event Architecture
+Prereqs: Docker Desktop/Minikube, kubectl, Skaffold, Node 20+, mkcert
 
-### **Event Catalog**
-
-| Event Subject | Publisher | Consumers | Payload | Purpose |
-|---------------|-----------|-----------|---------|---------|
-| `product:created` | Products | Orders | `{ id, title, price, userId, version, orderId? }` | Replicate new product to Orders DB |
-| `product:updated` | Products | Orders | `{ id, title, price, userId, version, orderId? }` | Sync product changes |
-| `order:created` | Orders | Products, Expiration, Payments | `{ id, status, userId, expiresAt, version, product: { id } }` | Lock product, schedule expiration, replicate to payments |
-| `order:cancelled` | Orders | Products, Payments | `{ id, version, product: { id } }` | Release product reservation, update payment records |
-| `expiration:complete` | Expiration | Orders | `{ orderId }` | Trigger order cancellation if not paid |
-| `payment:created` | Payments | Orders | `{ id, orderId, stripeId }` | Mark order as complete |
-
----
-
-### **Event Definitions**
-
-#### `product:created` Event
-```typescript
-{
-  subject: "product:created",
-  data: {
-    id: "507f191e810c19729de860ea",
-    title: "Concert Ticket",
-    price: 150,
-    userId: "507f1f77bcf86cd799439011",
-    version: 0,
-    orderId: undefined  // null = available
-  }
-}
+1) Start cluster & ingress
+```bash
+minikube start --cpus=4 --memory=8192
+minikube addons enable ingress
+minikube tunnel   # keep this terminal running
 ```
 
-**Triggered When:** New product is created via `POST /api/products`
-
-**Consumers:**
-- **Orders Service** → Creates local replica in `products` collection
-
----
-
-#### `product:updated` Event
-```typescript
-{
-  subject: "product:updated",
-  data: {
-    id: "507f191e810c19729de860ea",
-    title: "Concert Ticket - Updated Price",
-    price: 120,
-    userId: "507f1f77bcf86cd799439011",
-    version: 2,  // Incremented version
-    orderId: "608f191e810c19729de860eb"  // May be reserved
-  }
-}
+2) TLS & hosts
+```bash
+mkcert -install
+mkcert ecommerce.local
+kubectl create secret tls ecommerce-local-tls \
+  --cert=ecommerce.local.pem \
+  --key=ecommerce.local-key.pem
+echo "127.0.0.1 ecommerce.local" | sudo tee -a /etc/hosts
 ```
 
-**Triggered When:** Product is updated via `PUT /api/products/:id`
+3) Required secrets
+```bash
+kubectl create secret generic jwt-secret \
+  --from-literal=JWT_KEY='dev_jwt_secret'
 
-**Consumers:**
-- **Orders Service** → Updates local replica (with version check)
-
----
-
-#### `order:created` Event
-```typescript
-{
-  subject: "order:created",
-  data: {
-    id: "608f191e810c19729de860eb",
-    status: "created",
-    userId: "507f1f77bcf86cd799439011",
-    expiresAt: "2025-11-12T10:15:00.000Z",  // 15 min from now
-    version: 0,
-    product: {
-      id: "507f191e810c19729de860ea"
-    }
-  }
-}
+kubectl create secret generic stripe-secret \
+  --from-literal=STRIPE_SECRET_KEY='sk_test_xxx' \
+  --from-literal=STRIPE_PUBLISHABLE_KEY='pk_test_xxx'
 ```
 
-**Triggered When:** User creates order via `POST /api/orders`
-
-**Consumers:**
-- **Products Service** → Sets `product.orderId` to lock it
-- **Expiration Service** → Schedules delayed job in Redis Bull queue
-
----
-
-#### `order:cancelled` Event
-```typescript
-{
-  subject: "order:cancelled",
-  data: {
-    id: "608f191e810c19729de860eb",
-    version: 1,
-    product: {
-      id: "507f191e810c19729de860ea"
-    }
-  }
-}
+4) Dev loop
+```bash
+skaffold dev
 ```
 
-**Triggered When:** 
-- User cancels order via `DELETE /api/orders/:id`
-- Order expires (triggered by `expiration:complete` event)
+Open: https://ecommerce.local
 
-**Consumers:**
-- **Products Service** → Clears `product.orderId` to release reservation
 
----
+## Kubernetes resources & ingress
 
-#### `expiration:complete` Event
-```typescript
-{
-  subject: "expiration:complete",
-  data: {
-    orderId: "608f191e810c19729de860eb"
-  }
-}
+Ingress: `infra/k8s/ingress/ingress.yaml`
+- Host `ecommerce.local`
+- Routes:
+  - `/` → `client-svc`
+  - `/api/users` → `auth-svc`
+  - `/api/products` → `product-svc`
+  - `/api/cart` → `cart-svc`
+  - `/api/orders` → `order-svc`
+  - `/api/payments` → `payment-svc`
+
+Deployments & Services (per service): see `infra/k8s/*/*-depl.yaml`
+- Each service uses its own Mongo deployment/service + ConfigMap/Secret for creds
+- NATS at `nats-svc:4222`
+
+Client deployment injects env:
+```yaml
+env:
+- name: NEXT_PUBLIC_STRIPE_KEY
+  valueFrom:
+    secretKeyRef:
+      name: stripe-secret
+      key: STRIPE_PUBLISHABLE_KEY
 ```
 
-**Triggered When:** Bull queue processes expired job (15 min after order creation)
 
-**Consumers:**
-- **Orders Service** → Checks order status:
-  - If `status === complete` → Ignores (already paid)
-  - Otherwise → Cancels order, publishes `order:cancelled`
+## Secrets & credentials
 
----
+You must provide:
+- `jwt-secret` → `JWT_KEY`
+- `stripe-secret` → `STRIPE_SECRET_KEY` (secret), `STRIPE_PUBLISHABLE_KEY` (publishable)
+- Mongo usernames/passwords (already templated in `infra/k8s/**` ConfigMaps/Secrets)
 
-#### `payment:created` Event
-```typescript
-{
-  subject: "payment:created",
-  data: {
-    id: "709f191e810c19729de860ec",
-    orderId: "608f191e810c19729de860eb",
-    stripeId: "ch_3STIK6RRsPUjHZ5Y10uLGpsR"
-  }
-}
-```
+Client runtime gets publishable key via SSR props; if the key is wrong you’ll see Stripe 401/invalid key.
 
-**Triggered When:** User successfully pays via `POST /api/payments`
 
-**Consumers:**
-- **Orders Service** → Updates order status: `created` → `complete`
+## Postman test scenarios
 
-**Important:** Once order is `complete`, expiration events are ignored!
+Environment
+- `baseUrl` = `https://ecommerce.local`
+- Accept self‑signed certificate
 
----
+Import collection
+- File: `infra/postman/ecommerce.postman_collection.json`
 
-### **Event Flow Guarantees**
+1) Auth
+- POST `{{baseUrl}}/api/users/signup` { email, password }
+- POST `{{baseUrl}}/api/users/signin`
+- GET `{{baseUrl}}/api/users/currentuser`
 
-- ✅ **At-Least-Once Delivery** - NATS Streaming persists events until acknowledged
-- ✅ **Queue Groups** - Ensures only one instance processes each event
-- ✅ **Manual Acknowledgment** - Events redelivered if service crashes before `msg.ack()`
-- ✅ **Optimistic Concurrency** - Version fields prevent race conditions
-- ✅ **Idempotency** - Listeners can safely re-process duplicate events
+2) Products
+- POST `{{baseUrl}}/api/products` { title, price, quantity }
+- GET `{{baseUrl}}/api/products`
+- GET `{{baseUrl}}/api/products/:id`
 
----
+3) Cart
+- POST `{{baseUrl}}/api/cart/items` { productId, quantity }
+- GET `{{baseUrl}}/api/cart`
 
-## 🔄 Complete Flow Diagrams
+4) Orders & payments
+- POST `{{baseUrl}}/api/orders` { items: [{ productId, quantity }] }
+- GET `{{baseUrl}}/api/orders/:orderId`
+- POST `{{baseUrl}}/api/payments` { token: "tok_visa", orderId }
+  - `tok_visa` works in Stripe test mode (no need to generate token manually)
+- Verify order becomes Complete, product quantity decreases, cart clears
+
+
+## Stripe integration (client)
+
+- Uses Stripe Elements; card form embedded on order page.
+- We pass `NEXT_PUBLIC_STRIPE_KEY` to the page via server‑side props (runtime‑safe).
+- Test card: `4242 4242 4242 4242`, any future date, any CVC.
+
+
+## Troubleshooting
+
+- Invalid publishable key: `kubectl exec -it $(kubectl get pods -l app=client -o jsonpath='{.items[0].metadata.name}') -- printenv | grep STRIPE`
+- 401 from `api.stripe.com/v1/tokens`: publishable key wrong/disabled
+- Next.js dev vs prod env: client runs `node server.js` and uses SSR to expose the key
+- If Stripe popup appears with legacy warning, ensure `react-stripe-checkout` is removed and Elements is used
+
+
+## Contributing & license
+
+- Shared changes → publish new `@datnxecommerce/common` and bump services
+- Keep event contracts backward compatible
+- License: ISC
+
+Author: DatNX · Host: https://ecommerce.local · Org: @datnxecommerce
 
 ### **Flow 1: Create Product**
 
@@ -638,7 +292,7 @@ interface ExpirationJob {
 │ 1. Check if product exists locally              │
 │ 2. Check if product.orderId is null (available) │
 │ 3. Create order (status: created)               │
-│ 4. Set expiresAt = now + 15 minutes            │
+│ 4. Set expiredAt = now + 15 minutes            │
 │ 5. Save to DB                                   │
 └────┬────────────────────────────────────────────┘
      │ Publish: order:created
@@ -652,7 +306,7 @@ interface ExpirationJob {
 │ Products       │   │ Expiration Service          │
 │ Service        │   │                             │
 │                │   │ 1. Calculate delay:         │
-│ 1. Find product│   │    expiresAt - now = 15min │
+│ 1. Find product│   │    expireAt - now = 15min │
 │ 2. Set orderId │   │ 2. Add job to Bull Queue    │
 │ 3. Save & ack  │   │    with delay: 900000ms     │
 └────────────────┘   │ 3. msg.ack()                │
@@ -976,7 +630,7 @@ Update services:
 
 ```bash
 cd auth  # or products, orders, expiration
-npm install @datnxtickets/common@latest
+npm install @datnxecommerce/common@latest
 ```
 
 ---
@@ -1197,7 +851,7 @@ Content-Type: application/json
   "id": "608f191e810c19729de860eb",
   "userId": "507f1f77bcf86cd799439011",
   "status": "created",
-  "expiresAt": "2025-11-12T10:15:00.000Z",
+  "expiredAt": "2025-11-12T10:15:00.000Z",
   "product": {
     "id": "507f191e810c19729de860ea",
     "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
@@ -1207,7 +861,7 @@ Content-Type: application/json
 }
 ```
 
-**⚠️ Copy `expiresAt` - you have 15 minutes to complete payment!**
+**⚠️ Copy `expiredAt` - you have 15 minutes to complete payment!**
 
 **What Happens Behind the Scenes:**
 1. ✅ Order created in Orders Service
@@ -1277,7 +931,7 @@ GET {{baseUrl}}/api/orders
     "id": "608f191e810c19729de860eb",
     "userId": "507f1f77bcf86cd799439011",
     "status": "created",
-    "expiresAt": "2025-11-12T10:15:00.000Z",
+    "expiredAt": "2025-11-12T10:15:00.000Z",
     "product": {
       "id": "507f191e810c19729de860ea",
       "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
@@ -1303,7 +957,7 @@ GET {{baseUrl}}/api/orders/608f191e810c19729de860eb
   "id": "608f191e810c19729de860eb",
   "userId": "507f1f77bcf86cd799439011",
   "status": "created",
-  "expiresAt": "2025-11-12T10:15:00.000Z",
+  "expiredAt": "2025-11-12T10:15:00.000Z",
   "product": {
     "id": "507f191e810c19729de860ea",
     "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
@@ -1336,7 +990,7 @@ DELETE {{baseUrl}}/api/orders/608f191e810c19729de860eb
 
 **Don't cancel manually - wait 15 minutes**
 
-After `expiresAt` timestamp:
+After `expireAt` timestamp:
 
 1. ✅ Redis Bull job executes
 2. ✅ Expiration Service publishes `expiration:complete`
@@ -1442,7 +1096,7 @@ POST {{baseUrl}}/api/users/signout
 1. **Enable Cookie Jar**: Postman → Settings → Cookies → Enable cookies
 2. **HTTPS Certificate**: Accept self-signed certificate warnings
 3. **Test Expiration**: 
-   - For faster testing, modify `expiresAt` calculation in Orders Service
+   - For faster testing, modify `expiredAt` calculation in Orders Service
    - Change `15 * 60 * 1000` to `60 * 1000` (1 minute)
 4. **Monitor Events**: 
    ```bash

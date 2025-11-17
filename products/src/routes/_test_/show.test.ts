@@ -14,13 +14,15 @@ it('returns the product if found', async () => {
 
     const title = 'Test Product'
     const price = 100
+    const quantity = 10
     // Tạo product trước
     const createResponse = await request(app)
         .post('/api/products')
         .set('Cookie', global.signin())
         .send({
             title: title,
-            price: price
+            price: price,
+            quantity: quantity
         })
         .expect(201)
 
@@ -34,4 +36,5 @@ it('returns the product if found', async () => {
 
     expect(getResponse.body.title).toEqual(title)
     expect(getResponse.body.price).toEqual(price)
+    expect(getResponse.body.quantity).toEqual(quantity)
 })

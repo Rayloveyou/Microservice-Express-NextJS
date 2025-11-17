@@ -6,5 +6,11 @@ export interface PaymentCreatedEvent {
         id: string
         orderId: string
         stripeId: string
+        items: {
+            productId: string
+            price: number
+            quantity: number
+            title: string
+        }[]
     }
 }

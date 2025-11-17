@@ -1,11 +1,11 @@
 import express, { Request, Response } from 'express'
 import { body } from 'express-validator'
-import { requireAuth, validateRequest, BadRequestError, NotFoundError, NotAuthorizedError } from '@datnxtickets/common'
+import { requireAuth, validateRequest, BadRequestError, NotFoundError, NotAuthorizedError } from '@datnxecommerce/common'
 import { Order } from '../models/order'
-import { OrderStatus } from '@datnxtickets/common'
+import { OrderStatus } from '@datnxecommerce/common'
 import { stripe } from '../stripe'
 import { Payment } from '../models/payment'
-import { Publisher } from '@datnxtickets/common'
+import { Publisher } from '@datnxecommerce/common'
 import { PaymentCreatedPublisher } from '../events/publishers/payment-created-publisher'
 import { natsWrapper } from '../nats-wrapper'
 
@@ -43,7 +43,7 @@ router.post('/api/payments',
         // Create a charge with Stripe 
         const charge = await stripe.charges.create({
             currency: 'usd',
-            amount: order.price * 100,
+            amount: Math.round(order.total * 100),
             source: token,
             description: `Order ${order.id}`
         })
@@ -58,7 +58,13 @@ router.post('/api/payments',
         await new PaymentCreatedPublisher(natsWrapper.client).publish({
             id: payment.id,
             orderId: payment.orderId,
-            stripeId: payment.stripeId
+            stripeId: payment.stripeId,
+            items: order.items.map(item => ({
+                productId: item.productId,
+                price: item.price || 0,
+                quantity: item.quantity,
+                title: item.title || ''
+            }))
         })
 
         res.status(201).send({ id: charge.id })

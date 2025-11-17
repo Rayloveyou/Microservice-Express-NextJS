@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Production: uncomment to create minimal runtime bundle
-    // output: 'standalone',
+    // Make runtime env variables available to the browser
+    env: {
+        NEXT_PUBLIC_STRIPE_KEY: process.env.NEXT_PUBLIC_STRIPE_KEY,
+    },
 }
 
 export default nextConfig

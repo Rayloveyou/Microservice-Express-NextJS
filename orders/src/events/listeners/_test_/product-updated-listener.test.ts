@@ -1,7 +1,7 @@
 import { Product } from "../../../models/product"
 import { natsWrapper } from "../../../nats-wrapper"
 import { ProductUpdatedListener } from "../product-updated-listener"
-import { ProductUpdatedEvent } from "@datnxtickets/common"
+import { ProductUpdatedEvent } from "@datnxecommerce/common"
 import mongoose from "mongoose"
 import { Message } from "node-nats-streaming"
 
@@ -13,7 +13,8 @@ const setup = async () => {
     const product = Product.build({
         id: new mongoose.Types.ObjectId().toHexString(),
         title: 'concert',
-        price: 20
+        price: 20,
+        quantity: 10
     })
     await product.save()
 
@@ -23,7 +24,8 @@ const setup = async () => {
         version: product.version + 1,
         title: 'new title',
         price: 100,
-        userId: 'asdf'
+        userId: 'asdf',
+        quantity: 15
     }
 
     // Create a fake message object

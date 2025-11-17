@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express'
-import { NotAuthorizedError, NotFoundError, requireAuth } from '@datnxtickets/common'
+import { NotAuthorizedError, NotFoundError, requireAuth } from '@datnxecommerce/common'
 import { Order } from '../models/order'
 import mongoose from 'mongoose'
 
@@ -13,8 +13,8 @@ router.get('/api/orders/:id', requireAuth, async (req: Request, res: Response) =
         throw new NotFoundError()
     }
 
-    // Find the order and associated product with it
-    const order = await Order.findById(req.params.id).populate('product')
+    // Find the order and populate products inside items
+    const order = await Order.findById(req.params.id).populate('items.product')
 
     if (!order) {
         throw new NotFoundError()

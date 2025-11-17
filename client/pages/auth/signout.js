@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import UseRequest from '../../hooks/use-request'
 import Router from 'next/router'
+import { withCurrentUser } from '../../lib/with-current-user'
 
-export default () => {
+const Signout = ({ currentUser }) => {
     const { doRequest } = UseRequest({
         url: '/api/users/signout',
         method: 'post',
@@ -16,3 +17,7 @@ export default () => {
 
     return <div>Signing you out...</div>
 }
+
+export const getServerSideProps = withCurrentUser()
+
+export default Signout

@@ -33,7 +33,8 @@ it('returns an error if an invalid title is provided', async () => {
         .set('Cookie', global.signin())
         .send({
             title: '',
-            price: 10
+            price: 10,
+            quantity: 5
         })
         .expect(400)
 })
@@ -44,7 +45,8 @@ it('returns an error if an invalid price is provided', async () => {
         .set('Cookie', global.signin())
         .send({
             title: 'Valid Title',
-            price: -10
+            price: -10,
+            quantity: 5
         })
         .expect(400)
 })
@@ -59,7 +61,8 @@ it('creates a product with valid inputs', async () => {
         .set('Cookie', global.signin())
         .send({
             title: 'Valid Title',
-            price: 20
+            price: 20,
+            quantity: 10
         })
         .expect(201)
     
@@ -67,33 +70,37 @@ it('creates a product with valid inputs', async () => {
     expect(products.length).toEqual(1) // Đảm bảo đã có 1 product được tạo
     expect(products[0]!.title).toEqual('Valid Title') // Kiểm tra title của product vừa tạo
     expect(products[0]!.price).toEqual(20) // Kiểm tra giá trị price của product vừa tạo
+    expect(products[0]!.quantity).toEqual(10) // Kiểm tra số lượng của product vừa tạo
 })
 
 it('returns the created product in the response body', async () => {
     const title = 'Product From Response'
     const price = 55
+    const quantity = 15
 
     const response = await request(app)
         .post('/api/products')
         .set('Cookie', global.signin())
-        .send({ title, price })
+        .send({ title, price, quantity })
         .expect(201)
 
     expect(response.body).toBeDefined()
     expect(response.body.id).toBeDefined()
     expect(response.body.title).toEqual(title)
     expect(response.body.price).toEqual(price)
+    expect(response.body.quantity).toEqual(quantity)
     expect(response.body.userId).toBeDefined()
 })
 
 it('publishes an event', async () => {
     const title = 'Product From Response'
     const price = 55
+    const quantity = 20
 
     await request(app)
         .post('/api/products')
         .set('Cookie', global.signin())
-        .send({ title, price })
+        .send({ title, price, quantity })
         .expect(201)
 
     expect(natsWrapper.client.publish).toHaveBeenCalled()

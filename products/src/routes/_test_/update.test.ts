@@ -14,7 +14,8 @@ it('returns a 404 if not found', async () => {
         .set('Cookie', global.signin())
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
         .expect(404)
 })
@@ -25,7 +26,8 @@ it('returns a 401 if the user is not authenticated', async () => {
         .put(`/api/products/${id}`)
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
         .expect(401)
 })
@@ -36,7 +38,8 @@ it('returns 401 if user does not own the product', async () => {
         .set('Cookie', global.signin())
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
 
     await request(app)
@@ -44,7 +47,8 @@ it('returns 401 if user does not own the product', async () => {
         .set('Cookie', global.signin())
         .send({
             title: 'Test Product updated',
-            price: 1000
+            price: 1000,
+            quantity: 15
         })
         .expect(401)
 })
@@ -56,7 +60,8 @@ it('returns a 400 if the user provides an invalid title or price', async () => {
         .set('Cookie',cookie )
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
 
     await request(app)
@@ -64,7 +69,8 @@ it('returns a 400 if the user provides an invalid title or price', async () => {
         .set('Cookie', cookie)
         .send({
             title: '',
-            price: 1000
+            price: 1000,
+            quantity: 15
         })
         .expect(400)
 
@@ -73,7 +79,8 @@ it('returns a 400 if the user provides an invalid title or price', async () => {
         .set('Cookie', cookie)
         .send({
             title: '',
-            price: -1000
+            price: -1000,
+            quantity: 15
         })
         .expect(400)
 })
@@ -85,7 +92,8 @@ it('updates the product provided valid inputs', async () => {
         .set('Cookie',cookie )
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
 
     await request(app)
@@ -93,7 +101,8 @@ it('updates the product provided valid inputs', async () => {
         .set('Cookie', cookie)
         .send({
             title: 'Test Product updated',
-            price: 1000
+            price: 1000,
+            quantity: 20
         })
         .expect(200)
 
@@ -104,6 +113,7 @@ it('updates the product provided valid inputs', async () => {
 
     expect(productResponse.body.title).toEqual('Test Product updated')
     expect(productResponse.body.price).toEqual(1000)
+    expect(productResponse.body.quantity).toEqual(20)
 })
 
 it('publishes an event', async () => {
@@ -113,7 +123,8 @@ it('publishes an event', async () => {
         .set('Cookie',cookie )
         .send({
             title: 'Test Product',
-            price: 100
+            price: 100,
+            quantity: 10
         })
 
     await request(app)
@@ -121,40 +132,14 @@ it('publishes an event', async () => {
         .set('Cookie', cookie)
         .send({
             title: 'Test Product updated',
-            price: 1000
+            price: 1000,
+            quantity: 15
         })
         .expect(200)
 
     expect(natsWrapper.client.publish).toHaveBeenCalled()
 })
 
-it('rejects updates if the product is reserved', async () => {
-    const cookie = global.signin() 
-    const response =  await request(app)
-        .post('/api/products')
-        .set('Cookie',cookie )
-        .send({
-            title: 'Test Product',
-            price: 100
-        })
-
-    const product = await Product.findById(response.body.id)
-
-    product!.orderId = new mongoose.Types.ObjectId().toHexString()
-
-    // update the product to be reserved by setting the orderId
-    product?.set({
-        orderId: product.orderId
-    })
-
-    await product!.save()
-
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', cookie)
-        .send({
-            title: 'Test Product updated',
-            price: 1000
-        })
-        .expect(400)
-})
+// Note: The old "rejects updates if product is reserved" test has been removed
+// because we no longer use the orderId reservation system. 
+// Products now use quantity-based stock management instead.

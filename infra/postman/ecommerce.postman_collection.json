@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "Ecommerce Microservices (Local Minikube)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "End-to-end requests for auth, products, cart, orders, and payments on https://ecommerce.local"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://ecommerce.local" },
+    { "key": "productId", "value": "" },
+    { "key": "orderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/users/signup", "host": ["{{baseUrl}}"], "path": ["api","users","signup"] },
+            "body": {"mode":"raw","raw": "{\n  \"email\": \"user@test.com\",\n  \"password\": \"password\"\n}"}
+          }
+        },
+        {
+          "name": "Signin",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/users/signin", "host": ["{{baseUrl}}"], "path": ["api","users","signin"] },
+            "body": {"mode":"raw","raw": "{\n  \"email\": \"user@test.com\",\n  \"password\": \"password\"\n}"}
+          }
+        },
+        {
+          "name": "Current User",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/users/currentuser", "host": ["{{baseUrl}}"], "path": ["api","users","currentuser"] } }
+        },
+        {
+          "name": "Signout",
+          "request": { "method": "POST", "url": { "raw": "{{baseUrl}}/api/users/signout", "host": ["{{baseUrl}}"], "path": ["api","users","signout"] } }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api","products"] },
+            "body": {"mode":"raw","raw": "{\n  \"title\": \"Test Product\",\n  \"price\": 11,\n  \"quantity\": 5\n}"}
+          }
+        },
+        {
+          "name": "List Products",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api","products"] } }
+        },
+        {
+          "name": "Get Product",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api","products","{{productId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Add Item",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/cart/items", "host": ["{{baseUrl}}"], "path": ["api","cart","items"] },
+            "body": {"mode":"raw","raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"}
+          }
+        },
+        {
+          "name": "Get Cart",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/cart", "host": ["{{baseUrl}}"], "path": ["api","cart"] } }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/orders", "host": ["{{baseUrl}}"], "path": ["api","orders"] },
+            "body": {"mode":"raw","raw": "{\n  \"items\": [ { \"productId\": \"{{productId}}\", \"quantity\": 1 } ]\n}"}
+          }
+        },
+        {
+          "name": "Get Order",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/orders/{{orderId}}", "host": ["{{baseUrl}}"], "path": ["api","orders","{{orderId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Pay (tok_visa)",
+          "request": {
+            "method": "POST",
+            "header": [ {"key":"Content-Type","value":"application/json"} ],
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api","payments"] },
+            "body": {"mode":"raw","raw": "{\n  \"token\": \"tok_visa\",\n  \"orderId\": \"{{orderId}}\"\n}"}
+          }
+        }
+      ]
+    }
+  ]
+}

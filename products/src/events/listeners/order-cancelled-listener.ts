@@ -1,4 +1,4 @@
-import { Listener, OrderCancelledEvent, Subjects } from "@datnxtickets/common"
+import { Listener, OrderCancelledEvent, Subjects } from "@datnxecommerce/common"
 import { queueGroupName } from "./queue-group-name"
 import { Message } from "node-nats-streaming"
 import { Product } from "../../models/product"
@@ -9,35 +9,36 @@ export class OrderCancelledListener extends Listener<OrderCancelledEvent> {
     queueGroupName = queueGroupName
 
     async onMessage(data: OrderCancelledEvent['data'], msg: Message) {
+        // Process all items in the cancelled order
+        for (const item of data.items) {
+            const productId = item.productId
+            if (typeof productId !== 'string' || productId.length !== 24) {
+                console.error('Invalid productId in OrderCancelled event:', productId)
+                continue
+            }
 
-        const productId = data.product.id
-        if (typeof productId !== 'string' || productId.length !== 24) {
-            console.error('Invalid productId in OrderCancelled event:', productId)
-            return msg.ack() // ack to skip bad event
+            const product = await Product.findById(productId)
+            if (!product) {
+                console.error('Product not found:', productId)
+                continue
+            }
+
+            // Restore the product quantity by adding back the cancelled order item quantity
+            product.set({
+                quantity: product.quantity + item.quantity
+            })
+            await product.save()
+
+            // Publish product updated event
+            await new ProductUpdatedPublisher(this.client).publish({
+                id: product.id,
+                title: product.title,
+                price: product.price,
+                userId: product.userId,
+                quantity: product.quantity,
+                version: product.version
+            })
         }
-
-        const product = await Product.findById(productId)
-
-        if (!product) {
-            throw new Error('Product not found')
-        }
-
-        // set the orderId of the product to be undefined (delete field orderId)
-        product.set({
-            orderId: undefined
-        })
-
-        await product.save()
-
-        // publish an event that a ticket was updated
-        await new ProductUpdatedPublisher(this.client).publish({
-            id: product.id,
-            title: product.title,
-            price: product.price,
-            userId: product.userId,
-            ...(product.orderId && { orderId: product.orderId }), // if product.orderId exists, add it to the object 
-            version: product.version
-        })
 
         msg.ack()
     }

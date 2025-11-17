@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import UseRequest from '../../hooks/use-request'
 import Router from 'next/router'
+import { withCurrentUser } from '../../lib/with-current-user'
 
-const Signup = () => {
+const Signup = ({ currentUser }) => {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const { doRequest, errors } = UseRequest({
@@ -46,5 +47,7 @@ const Signup = () => {
         </form>
     );
 }
+
+export const getServerSideProps = withCurrentUser()
 
 export default Signup

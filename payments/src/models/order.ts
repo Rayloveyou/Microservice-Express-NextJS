@@ -1,20 +1,29 @@
-import { OrderStatus } from "@datnxtickets/common"
+import { OrderStatus } from "@datnxecommerce/common"
 import mongoose from "mongoose"
 import { updateIfCurrentPlugin } from "mongoose-update-if-current"
+
+interface OrderItemSnapshot {
+    productId: string
+    title?: string
+    price?: number
+    quantity: number
+}
 
 interface OrderAttrs {
     id: string
     version: number
     userId: string
-    price: number
     status: OrderStatus
+    total: number
+    items?: OrderItemSnapshot[]
 }
 
 interface OrderDoc extends mongoose.Document {
     version: number
     userId: string
-    price: number
     status: OrderStatus
+    total: number
+    items: OrderItemSnapshot[]
 }
 
 interface OrderModel extends mongoose.Model<OrderDoc> {
@@ -30,10 +39,19 @@ const orderSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    price: {
+    total: {
         type: Number,
-        required: true
-    }
+        required: true,
+        min: 0
+    },
+    items: [
+        {
+            productId: String,
+            title: String,
+            price: Number,
+            quantity: Number
+        }
+    ]
 }, {
     toJSON: {
         transform(doc, ret: any) {
@@ -48,12 +66,12 @@ orderSchema.plugin(updateIfCurrentPlugin)
 
 orderSchema.statics.build = (attrs: OrderAttrs) => {
     return new Order({
-        // _id: attrs.id để lưu vào trong MongoDB
         _id: attrs.id,
         version: attrs.version,
         userId: attrs.userId,
-        price: attrs.price,
-        status: attrs.status
+        status: attrs.status,
+        total: attrs.total,
+        items: attrs.items || []
     })
 }
 

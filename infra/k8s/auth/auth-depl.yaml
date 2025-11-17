@@ -12,6 +12,16 @@ spec:
       labels:
         app: auth
     spec:
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            echo 'Waiting for auth Mongo...';
+            until nc -z auth-mongo-svc 27017; do echo '  -> still starting'; sleep 1; done;
+            echo 'Auth Mongo is up.';
       containers:
       - name: auth
         image: datnx/auth:latest

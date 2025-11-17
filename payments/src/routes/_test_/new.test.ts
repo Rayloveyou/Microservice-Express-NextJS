@@ -2,7 +2,7 @@ import request from "supertest"
 import {app} from "../../app"
 import mongoose from "mongoose"
 import { Order } from "../../models/order"
-import { OrderStatus } from "@datnxtickets/common"
+import { OrderStatus } from "@datnxecommerce/common"
 import { stripe } from "../../stripe"
 import { Payment } from "../../models/payment"
 
@@ -23,8 +23,9 @@ it('return 401 when purchasing an order that does not belong to the user', async
         id: new mongoose.Types.ObjectId().toHexString(),
         userId: new mongoose.Types.ObjectId().toHexString(),
         version: 0,
-        price: 20,
-        status: OrderStatus.Created
+        total: 20,
+        status: OrderStatus.Created,
+        items: [{ productId: new mongoose.Types.ObjectId().toHexString(), quantity: 1, price: 20 }]
     })
     await order.save()
     await request(app)
@@ -45,8 +46,9 @@ it('return 400 when purchasing a cancelled order', async () => {
         id: new mongoose.Types.ObjectId().toHexString(),
         userId: userId,
         version: 0,
-        price: 20,
-        status: OrderStatus.Cancelled
+        total: 20,
+        status: OrderStatus.Cancelled,
+        items: [{ productId: new mongoose.Types.ObjectId().toHexString(), quantity: 1, price: 20 }]
     })
 
     await order.save()
@@ -69,8 +71,9 @@ it('returns a 201 with valid inputs', async () => {
         id: new mongoose.Types.ObjectId().toHexString(),
         userId: userId,
         version: 0,
-        price: price,
-        status: OrderStatus.Created
+        total: price,
+        status: OrderStatus.Created,
+        items: [{ productId: new mongoose.Types.ObjectId().toHexString(), quantity: 1, price: price }]
     })
 
     await order.save()

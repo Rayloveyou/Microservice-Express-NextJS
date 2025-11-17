@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { body } from 'express-validator'
-import { requireAuth, validateRequest, NotFoundError } from '@datnxtickets/common'
+import { requireAuth, validateRequest, NotFoundError } from '@datnxecommerce/common'
 import { Product } from '../models/product'
 import mongoose from 'mongoose'
 

@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-cart-config
+data:
+  MONGO_HOST: cart-mongo-svc
+  MONGO_PORT: "27017"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongo-cart-secret
+type: Opaque
+stringData:
+  username: admin
+  password: password123
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-mongo-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart-mongo
+  template:
+    metadata:
+      labels:
+        app: cart-mongo
+    spec:
+      containers:
+      - name: cart-mongo
+        image: mongo:8.0
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-cart-secret
+              key: username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-cart-secret
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-mongo-svc
+spec:
+  selector:
+    app: cart-mongo
+  ports:
+  - name: db
+    port: 27017
+    targetPort: 27017
+  type: ClusterIP

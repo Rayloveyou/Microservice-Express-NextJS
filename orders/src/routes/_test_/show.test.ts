@@ -10,7 +10,8 @@ it('fetches the order', async () => {
     const product = Product.build({
         id: new mongoose.Types.ObjectId().toHexString(),
         title: 'Test Product',
-        price: 100
+        price: 100,
+        quantity: 10
     })
     await product.save()
 
@@ -21,7 +22,7 @@ it('fetches the order', async () => {
         .post('/api/orders')
         .set('Cookie', userCookie)
         .send({
-            productId: product.id
+            items: [{ productId: product.id, quantity: 1 }]
         })
         .expect(201)
 
@@ -43,7 +44,8 @@ it('returns an error if one user tries to fetch another users order', async () =
     const product = Product.build({
         id: new mongoose.Types.ObjectId().toHexString(),
         title: 'Test Product',
-        price: 100
+        price: 100,
+        quantity: 10
     })
     await product.save()
 
@@ -54,7 +56,7 @@ it('returns an error if one user tries to fetch another users order', async () =
         .post('/api/orders')
         .set('Cookie', userCookie)
         .send({
-            productId: product.id
+            items: [{ productId: product.id, quantity: 1 }]
         })
         .expect(201)
 

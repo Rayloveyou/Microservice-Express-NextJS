@@ -3,7 +3,7 @@ import { body } from 'express-validator' // for request validation
 import jwt from 'jsonwebtoken'
 import { User } from '../models/user'
 import { Password } from '../services/password'
-import { BadRequestError ,validateRequest } from '@datnxtickets/common'
+import { BadRequestError ,validateRequest } from '@datnxecommerce/common'
 
 const router = express.Router() // Create a router instance
 

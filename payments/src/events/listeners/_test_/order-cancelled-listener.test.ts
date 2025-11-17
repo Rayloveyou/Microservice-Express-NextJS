@@ -1,4 +1,4 @@
-import { OrderCancelledEvent, OrderStatus } from "@datnxtickets/common"
+import { OrderCancelledEvent, OrderStatus } from "@datnxecommerce/common"
 import mongoose from "mongoose"
 import { Message } from "node-nats-streaming"
 import { natsWrapper } from "../../../nats-wrapper"
@@ -13,9 +13,17 @@ const setup = async () => {
     const order = Order.build({
         id: new mongoose.Types.ObjectId().toHexString(),
         status: OrderStatus.Created,
-        price: 10,
         userId: 'asdf',
-        version: 0
+        version: 0,
+        total: 10,
+        items: [
+            {
+                productId: 'product123',
+                price: 10,
+                quantity: 1,
+                title: 'Test Product'
+            }
+        ]
     })
     await order.save()
 
@@ -23,9 +31,13 @@ const setup = async () => {
     const data: OrderCancelledEvent['data'] = {
         id: order.id,
         version: 1,
-        product: {
-            id: 'asdf',
-        }
+        items: [
+            {
+                productId: 'product123',
+                quantity: 1
+            }
+        ],
+        total: 10
     }
 
     // Create a fake message object

@@ -7,14 +7,18 @@ interface ProductAttrs {
     id: string
     title: string
     price: number
+    quantity: number
+    imageUrl?: string
 }
 
 // Interface ProductDoc: Mô tả một document Product trong MongoDB
 export interface ProductDoc extends mongoose.Document {
     title: string
-    price: number,
+    price: number
+    quantity: number
     version: number
-    isReserved(): Promise<boolean>
+    imageUrl?: string
+    hasStock(requestedQuantity: number): Promise<boolean>
 }
 
 // Interface ProductModel: Mô tả Product Model (class-level methods)
@@ -33,6 +37,15 @@ const productSchema = new mongoose.Schema({
         type: Number,
         required: true,
         min: 0
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    imageUrl: {
+        type: String,
+        required: false
     }
 }, {
     toJSON: {
@@ -64,16 +77,17 @@ productSchema.statics.build = (attrs: ProductAttrs) => {
             // assign _id with attrs.id passed in from id parameter (from product:created event)
             _id: attrs.id,
             title: attrs.title,
-            price: attrs.price
+            price: attrs.price,
+            quantity: attrs.quantity,
+            imageUrl: attrs.imageUrl
         }
     )
 }
 
-productSchema.methods.isReserved = async function () {
-    // Run query to look at all orders. Find an order where the product
-    // is the product we just found *and* the order status is *not* cancelled.
-    // If we find an order from that means the product *is* reserved
-    const existingOrder = await this.model('Order').findOne({
+productSchema.methods.hasStock = async function (requestedQuantity: number) {
+    // Calculate total quantity reserved in active orders
+    const Order = this.model('Order')
+    const activeOrders = await Order.find({
         product: this,
         status: {
             $in: [
@@ -83,8 +97,12 @@ productSchema.methods.isReserved = async function () {
             ]
         }
     })
-    // if null -> true và ngược lại
-    return !!existingOrder
+
+    // Sum up all quantities from active orders
+    const reservedQuantity = activeOrders.reduce((sum: number, order: any) => sum + order.quantity, 0)
+    const availableQuantity = this.quantity - reservedQuantity
+
+    return availableQuantity >= requestedQuantity
 }
 
 // Tạo Product Model

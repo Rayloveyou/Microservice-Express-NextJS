@@ -12,6 +12,16 @@ spec:
       labels:
         app: order
     spec:
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            echo 'Waiting for order Mongo...';
+            until nc -z order-mongo-svc 27017; do echo '  -> still starting'; sleep 1; done;
+            echo 'Order Mongo is up.';
       containers:
       - name: order
         image: datnx/order:latest

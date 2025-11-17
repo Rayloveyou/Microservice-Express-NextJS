@@ -5,6 +5,8 @@ import { app } from './app'
 import { natsWrapper } from './nats-wrapper'
 import { OrderCreatedListener } from './events/listeners/order-created-listener'
 import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
+import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
+import { initializeBucket } from './config/cloudinary'
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -34,6 +36,7 @@ const connectNats = async (): Promise<void> => {
     // Initialize instance of the listener and Listen to events
     new OrderCreatedListener(natsWrapper.client).listen()
     new OrderCancelledListener(natsWrapper.client).listen()
+    new PaymentCreatedListener(natsWrapper.client).listen()
   } catch (err) {
     console.error('NATS connection failed:', err)
     console.log('Retrying in 5 seconds...')
@@ -61,6 +64,7 @@ const start = async () => {
 
   await connectNats()
   await connectMongo()
+  await initializeBucket()
 
   app.listen(3000, () => {
     console.log('Product service listening on port 3000!!!!');

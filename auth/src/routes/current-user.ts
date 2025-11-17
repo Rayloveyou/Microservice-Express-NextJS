@@ -1,6 +1,6 @@
 import express from 'express'
-import { currentUser } from '@datnxtickets/common'
-import { requireAuth } from '@datnxtickets/common'
+import { currentUser } from '@datnxecommerce/common'
+import { requireAuth } from '@datnxecommerce/common'
 
 const router = express.Router() // Create a router instance
 

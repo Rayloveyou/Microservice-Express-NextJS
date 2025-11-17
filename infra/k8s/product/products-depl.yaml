@@ -12,6 +12,16 @@ spec:
       labels:
         app: product
     spec:
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            echo 'Waiting for product Mongo...';
+            until nc -z product-mongo-svc 27017; do echo '  -> still starting'; sleep 1; done;
+            echo 'Product Mongo is up.';
       containers:
       - name: product
         image: datnx/product:latest
@@ -54,6 +64,22 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: MINIO_ENDPOINT
+          value: minio-svc
+        - name: MINIO_PORT
+          value: "9000"
+        - name: MINIO_USE_SSL
+          value: "false"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_USER
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ROOT_PASSWORD
 ---
 apiVersion: v1
 kind: Service

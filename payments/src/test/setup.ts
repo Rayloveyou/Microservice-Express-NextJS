@@ -11,7 +11,7 @@ declare global {
 // Mock natsWrapper để test 
 jest.mock('../nats-wrapper')
 
-process.env.STRIPE_SECRET_KEY = '<your stripe secret key>'
+process.env.STRIPE_SECRET_KEY = '< stripe secret key >'
 
 let mongo: MongoMemoryServer
 

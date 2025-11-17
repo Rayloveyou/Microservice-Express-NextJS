@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { body } from 'express-validator'
-import { requireAuth, NotFoundError } from '@datnxtickets/common'
+import { requireAuth, NotFoundError } from '@datnxecommerce/common'
 import { natsWrapper } from '../nats-wrapper'
 import mongoose from 'mongoose'
 import { Order, OrderStatus } from '../models/order'
@@ -17,8 +17,8 @@ router.delete('/api/orders/:id', requireAuth, async (req: Request, res: Response
         throw new NotFoundError()
     }
 
-    // Find the order and associated product with it
-    const order = await Order.findById(req.params.id).populate('product')
+    // Find the order and populate products within items
+    const order = await Order.findById(req.params.id).populate('items.product')
 
     if (!order) {
         throw new NotFoundError()
@@ -32,13 +32,14 @@ router.delete('/api/orders/:id', requireAuth, async (req: Request, res: Response
     await order.save()
 
     // Publish an event to NATS
-    new OrderCancelledPublisher(natsWrapper.client).publish({
+    await new OrderCancelledPublisher(natsWrapper.client).publish({
         id: order.id,
         version: order.version,
-        product: {
-            // Use raw ObjectId -> hex string; avoid .id which returns binary buffer string
-            id: (order.product as any)._id ? (order.product as any)._id.toString() : order.product.toString(),
-        }
+        items: order.items.map(i => ({
+            productId: (i.product as any)._id ? (i.product as any)._id.toString() : i.product.toString(),
+            quantity: i.quantity
+        })),
+        total: order.total
     })
     res.status(204).send(order)
 })

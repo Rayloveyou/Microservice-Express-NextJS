@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect width="400" height="400" fill="#e9ecef"/>
+  <g transform="translate(100, 100)">
+    <path fill="#adb5bd" d="M100 0C44.77 0 0 44.77 0 100s44.77 100 100 100 100-44.77 100-100S155.23 0 100 0zm0 180c-44.11 0-80-35.89-80-80s35.89-80 80-80 80 35.89 80 80-35.89 80-80 80z"/>
+    <circle fill="#adb5bd" cx="100" cy="80" r="25"/>
+    <path fill="#adb5bd" d="M30 140l30-40 20 20 30-30 30 40v30H30z"/>
+  </g>
+  <text x="200" y="250" font-family="Arial, sans-serif" font-size="20" fill="#6c757d" text-anchor="middle">
+    No Image Available
+  </text>
+</svg>

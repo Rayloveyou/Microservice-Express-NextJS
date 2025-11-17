@@ -1,4 +1,4 @@
-import { OrderCreatedEvent, OrderStatus } from "@datnxtickets/common"
+import { OrderCreatedEvent, OrderStatus } from "@datnxecommerce/common"
 import mongoose from "mongoose"
 import { Message } from "node-nats-streaming"
 import { natsWrapper } from "../../../nats-wrapper"
@@ -15,11 +15,15 @@ const setup = async () => {
         version: 0,
         status: OrderStatus.Created,
         userId: 'asdf',
-        expiresAt: 'asdf',
-        product: {
-            id: new mongoose.Types.ObjectId().toHexString(),
-            price: 10
-        }
+        items: [
+            {
+                productId: new mongoose.Types.ObjectId().toHexString(),
+                price: 10,
+                quantity: 1,
+                title: 'Test Product'
+            }
+        ],
+        total: 10
     }
 
     // Create a fake message object
@@ -39,7 +43,9 @@ it('replicates the order info', async () => {
 
     const order = await Order.findById(data.id)
 
-    expect(order!.price).toEqual(data.product.price)
+    expect(order!.total).toEqual(data.total)
+    expect(order!.items.length).toEqual(1)
+    expect(order!.items[0]?.quantity).toEqual(1)
 })
 
 it('acks the message', async () => {

@@ -1,4 +1,4 @@
-import { OrderCancelledEvent, Subjects, Listener, OrderStatus } from "@datnxtickets/common"
+import { OrderCancelledEvent, Subjects, Listener, OrderStatus } from "@datnxecommerce/common"
 import { queueGroupName } from "./queue-group-name"
 import { Order } from "../../models/order"
 export class OrderCancelledListener extends Listener<OrderCancelledEvent> {

@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { body } from 'express-validator'
-import { requireAuth, validateRequest, NotFoundError, NotAuthorizedError, BadRequestError } from '@datnxtickets/common'
+import { requireAuth, validateRequest, NotFoundError, NotAuthorizedError, BadRequestError } from '@datnxecommerce/common'
 import { Product } from '../models/product'
 import mongoose from 'mongoose'
 import { ProductUpdatedPublisher } from '../events/publishers/product-updated-publisher'
@@ -10,7 +10,9 @@ const router = express.Router()
 
 router.put('/api/products/:id', requireAuth, [
     body('title').not().isEmpty().withMessage('Title is required'),
-    body('price').isFloat({ gt: 0 }).withMessage('Price must be a positive number')
+    body('price').isFloat({ gt: 0 }).withMessage('Price must be a positive number'),
+    body('quantity').isInt({ min: 0 }).withMessage('Quantity must be a non-negative integer'),
+    body('imageUrl').optional().isURL().withMessage('Image URL must be valid')
 ], validateRequest, async (req: Request, res: Response) => {
 
     // Validate if id is a valid MongoDB ObjectId
@@ -23,11 +25,6 @@ router.put('/api/products/:id', requireAuth, [
     if (!product) {
         throw new NotFoundError()
     }
-
-    // Check if the product is reserved
-    if (product.orderId) {
-        throw new BadRequestError('Cannot edit a reserved product')
-    }
     
     // Check if the user is the owner of the product
     if (product.userId !== req.currentUser!.id) {
@@ -37,7 +34,9 @@ router.put('/api/products/:id', requireAuth, [
     // Update product
     product.set({
         title: req.body.title,
-        price: req.body.price
+        price: req.body.price,
+        quantity: req.body.quantity,
+        ...(req.body.imageUrl && { imageUrl: req.body.imageUrl })
     })
 
     // Save product
@@ -49,7 +48,9 @@ router.put('/api/products/:id', requireAuth, [
         title: product.title,
         price: product.price,
         userId: product.userId,
-        version: product.version // version key from Mongoose (+1)
+        version: product.version, // version key from Mongoose (+1)
+        quantity: product.quantity,
+        ...(product.imageUrl && { imageUrl: product.imageUrl })
     })
 
     // Send response 

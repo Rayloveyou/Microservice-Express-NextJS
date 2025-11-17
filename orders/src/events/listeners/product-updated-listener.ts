@@ -1,5 +1,5 @@
 import { Message } from 'node-nats-streaming'
-import { Subjects, Listener, ProductUpdatedEvent } from '@datnxtickets/common'
+import { Subjects, Listener, ProductUpdatedEvent } from '@datnxecommerce/common'
 import { Product } from '../../models/product'
 import { queueGroupName } from './queue-group-name'
 import { version } from 'mongoose'
@@ -17,10 +17,12 @@ export class ProductUpdatedListener extends Listener<ProductUpdatedEvent> {
             throw new Error('Product not found')
         }
         
-        const {title, price } = data
+        const {title, price, quantity, imageUrl } = data
         product.set({
             title,
-            price
+            price,
+            quantity,
+            ...(imageUrl && { imageUrl })
         })
         await product.save()
 

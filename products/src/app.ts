@@ -1,6 +1,6 @@
 import express from 'express'
 import cookieSession from 'cookie-session'
-import { errorHandler, NotFoundError, currentUser } from '@datnxtickets/common'
+import { errorHandler, NotFoundError, currentUser } from '@datnxecommerce/common'
 import { createProductRouter } from './routes/new'
 import { showProductRouter } from './routes/show'
 import { indexProductRouter } from './routes/index'

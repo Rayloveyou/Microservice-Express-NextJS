@@ -5,8 +5,8 @@ import { app } from './app'
 import { natsWrapper } from './nats-wrapper'
 import { ProductCreatedListener } from './events/listeners/product-created-listener'
 import { ProductUpdatedListener } from './events/listeners/product-updated-listener'
-import { ExpirationCompleteListener } from './events/listeners/expiration-complete-listener'
 import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
+import { CartCheckoutListener } from './events/listeners/cart-checkout-listener'
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -36,8 +36,8 @@ const connectNats = async (): Promise<void> => {
     // Initialize instance of the listener and Listen to events
     new ProductCreatedListener(natsWrapper.client).listen()
     new ProductUpdatedListener(natsWrapper.client).listen()
-    new ExpirationCompleteListener(natsWrapper.client).listen()
     new PaymentCreatedListener(natsWrapper.client).listen()
+    new CartCheckoutListener(natsWrapper.client).listen()
 
   } catch (err) {
     console.error('NATS connection failed:', err)

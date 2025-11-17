@@ -5,7 +5,8 @@ it('implements optimistic concurrency control', async () => {
     const product = Product.build({
         title: 'Test Product',
         price: 100,
-        userId: '123'
+        userId: '123',
+        quantity: 10
     })
 
     // Save the product to the database
@@ -36,7 +37,8 @@ it('increments the version number on multiple saves', async () => {
     const product = Product.build({
         title: 'Test Product',
         price: 100,
-        userId: '123'
+        userId: '123',
+        quantity: 10
     })
 
     await product.save()

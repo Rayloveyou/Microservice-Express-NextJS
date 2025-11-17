@@ -1,4 +1,4 @@
-import { Subjects, OrderCreatedEvent, Listener } from "@datnxtickets/common"
+import { Subjects, OrderCreatedEvent, Listener } from "@datnxecommerce/common"
 import { queueGroupName } from "./queue-group-name"
 import { Message } from "node-nats-streaming"
 import { Order } from "../../models/order"
@@ -9,16 +9,18 @@ export class OrderCreatedListener extends Listener<OrderCreatedEvent> {
     async onMessage(data: OrderCreatedEvent['data'], msg: Message) {
         const order = Order.build({
             id: data.id,
-            price: data.product.price,
             status: data.status,
             userId: data.userId,
-            version: data.version
+            version: data.version,
+            total: data.total,
+            items: data.items.map(it => ({
+                productId: it.productId,
+                title: it.title,
+                price: it.price,
+                quantity: it.quantity
+            }))
         })
-        
         await order.save()
-        
-        msg.ack() // Marked the message as processed
-        // console.log('event data', data)
-        // console.log('event data', msg.ack)
-        }
- }
+        msg.ack()
+    }
+}

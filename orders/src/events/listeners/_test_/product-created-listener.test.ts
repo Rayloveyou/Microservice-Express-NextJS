@@ -1,7 +1,7 @@
 import { Product } from "../../../models/product"
 import { natsWrapper } from "../../../nats-wrapper"
 import { ProductCreatedListener } from "../product-created-listener"
-import { ProductCreatedEvent } from "@datnxtickets/common"
+import { ProductCreatedEvent } from "@datnxecommerce/common"
 import mongoose from "mongoose"
 import { Message } from "node-nats-streaming"
 
@@ -14,6 +14,7 @@ const setup = async () => {
         id: new mongoose.Types.ObjectId().toHexString(),
         title: 'concert',
         price: 20,
+        quantity: 10,
         userId: new mongoose.Types.ObjectId().toHexString(),
         version: 0
     }

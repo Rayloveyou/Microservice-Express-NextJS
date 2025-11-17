@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+    spec:
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            echo 'Waiting for cart Mongo...';
+            until nc -z cart-mongo-svc 27017; do echo '  -> still starting'; sleep 1; done;
+            echo 'Cart Mongo is up.';
+      containers:
+      - name: cart
+        image: datnx/cart:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: JWT_KEY
+          valueFrom:
+            secretKeyRef:
+              name: jwt-secret
+              key: JWT_KEY
+        - name: MONGO_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-cart-secret
+              key: username
+        - name: MONGO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-cart-secret
+              key: password
+        - name: MONGO_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: mongo-cart-config
+              key: MONGO_HOST
+        - name: MONGO_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mongo-cart-config
+              key: MONGO_PORT
+        - name: NATS_URL
+          value: http://nats-svc:4222
+        - name: NATS_CLUSTER_ID
+          value: ticketing
+        - name: NATS_CLIENT_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-svc
+spec:
+  selector:
+    app: cart
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+  type: ClusterIP

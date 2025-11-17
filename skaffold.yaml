@@ -32,14 +32,14 @@ build:
       context: products
       docker:
         dockerfile: Dockerfile
+    # Cart Service
+    - image: datnx/cart
+      context: cart
+      docker:
+        dockerfile: Dockerfile
     # Order Service
     - image: datnx/order
       context: orders
-      docker:
-        dockerfile: Dockerfile
-    # Expiration Service
-    - image: datnx/expiration
-      context: expiration
       docker:
         dockerfile: Dockerfile
     # Payments Service

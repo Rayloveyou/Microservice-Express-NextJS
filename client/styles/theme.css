@@ -1,0 +1,92 @@
+/* Global theme: blue + purple */
+:root {
+  --primary-blue: #2563eb;   /* blue-600 */
+  --primary-blue-700: #1d4ed8;
+  --primary-purple: #7c3aed; /* purple-600 */
+  --primary-purple-700: #6d28d9;
+  --text-dark: #0f172a;      /* slate-900 */
+  --text-muted: #64748b;     /* slate-500 */
+  --bg-light: #f8fafc;       /* slate-50 */
+}
+
+html, body {
+  background: var(--bg-light);
+  color: var(--text-dark);
+}
+
+/* Gradient brand background */
+.brand-gradient {
+  background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+}
+
+/* Hero section */
+.hero {
+  border-radius: 16px;
+  color: #fff;
+  padding: 48px 32px;
+  position: relative;
+  overflow: hidden;
+}
+.hero .badge-brand {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.hero h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.hero p {
+  color: rgba(255,255,255,0.9);
+}
+
+/* Buttons */
+.btn-brand {
+  background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+  color: #fff;
+  border: none;
+}
+.btn-brand:hover {
+  filter: brightness(1.05);
+  color: #fff;
+}
+.btn-outline-brand {
+  border: 1px solid rgba(255,255,255,0.7);
+  color: #fff;
+}
+.btn-outline-brand:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+/* Cards */
+.card-product {
+  border: 1px solid rgba(2, 6, 23, 0.06);
+  box-shadow: 0 6px 24px rgba(2, 6, 23, 0.06);
+  border-radius: 14px;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.card-product:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(2, 6, 23, 0.12);
+}
+.card-product .price {
+  color: var(--primary-purple-700);
+  font-weight: 600;
+}
+
+/* Section header underline */
+.section-title {
+  position: relative;
+  display: inline-block;
+}
+.section-title:after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary-blue), var(--primary-purple));
+}
