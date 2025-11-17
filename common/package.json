@@ -1,6 +1,6 @@
 {
   "name": "@datnxtickets/common",
-  "version": "1.0.29",
+  "version": "1.0.31",
   "description": "",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",

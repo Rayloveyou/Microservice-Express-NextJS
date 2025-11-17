@@ -9,10 +9,12 @@ export interface OrderCreatedEvent {
         status: OrderStatus
         userId: string
         expiredAt: string
-        product: {
-            id: string
+        items: {
+            productId: string
             price: number
-        }
-        quantity: number
+            quantity: number
+            title: string
+        }[]
+        total: number
     }
 }

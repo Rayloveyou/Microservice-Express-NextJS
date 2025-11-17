@@ -5,9 +5,10 @@ export interface OrderCancelledEvent {
     data: {
         id: string // orderId
         version: number
-        product: {
-            id: string // productId
-        }
-        quantity: number
+        items: {
+            productId: string
+            quantity: number
+        }[]
+        total: number
     }
 }
