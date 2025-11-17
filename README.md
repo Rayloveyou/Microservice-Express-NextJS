@@ -1,134 +1,311 @@
-# 🧱 Ticketing Microservices Platform
+# 🛒 Ticketing Microservices Platform
 
-Microservices-based e-commerce stack designed for local Kubernetes (Minikube) with full TLS via mkcert, event-driven coordination over NATS Streaming, per-service MongoDB clusters, Stripe-powered checkout, and MinIO object storage served over `https://minio.local` and `https://minio-api.local`.
+A **modern e-commerce platform** built on microservices, designed for realistic production scenarios: **Node.js**, **TypeScript**, **Next.js 16**, **MongoDB**, **NATS Streaming**, **Stripe**, **MinIO**, and **Kubernetes** running on **Minikube** with TLS from **mkcert** covering `https://ecommerce.local`, `https://minio.local`, and `https://minio-api.local`.
+
+This project demonstrates:
+
+- 🔐 **User Authentication & Session Management** with JWT cookies
+- 🧺 **Persistent Shopping Cart** that survives page refreshes and clears only after payment
+- 🛍️ **Product Catalog & Inventory Management** backed by MinIO-hosted media
+- 🧾 **Order Lifecycle** without product locking or automatic expiration (intentionally simplified)
+- 💳 **Stripe Payments** with post-payment inventory reconciliation
+- 📨 **Event-Driven Architecture** using NATS Streaming and shared event contracts
+- 🚀 **Kubernetes-native workflow** powered by Skaffold, mkcert, and Minikube
 
 ---
 
-## 🗺️ High-Level Architecture
+## 📋 Table of Contents
+- [Architecture Overview](#-architecture-overview)
+- [Tech Stack](#-tech-stack)
+- [Services](#-services)
+- [Database Schemas](#-database-schemas)
+- [Event Architecture](#-event-architecture)
+- [Complete Flow Diagrams](#-complete-flow-diagrams)
+- [Getting Started](#-getting-started)
+- [Development](#-development)
+- [Testing with Postman](#-testing-with-postman)
+- [Deployment](#-deployment)
+- [Security Features](#-security-features)
+- [Future Enhancements](#-future-enhancements)
+- [Learning Resources](#-learning-resources)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Author](#-author)
+- [Acknowledgments](#-acknowledgments)
+- [Support](#-support)
+
+---
+
+## 🏗 Architecture Overview
 ```
-Browser (Next.js SSR @ https://ecommerce.local)
-        │
-        ▼
-Ingress (NGINX + mkcert certs)
-        │─────────────────────────────────────────────────────────────────────┐
-        │                                                                     │
-  Client Service (Next.js) ──calls──► Auth / Products / Cart / Orders / Payments APIs
-        │                                                                     │
-        └──────────────────────────────► NATS Streaming ◄──────────────────────┘
-                                        │        │        │
-                                        ▼        ▼        ▼
-                                Products   Cart   Orders   Payments
-                                 Mongo      Mongo   Mongo    Mongo
-                                        │
-                                        ▼
-                              MinIO (media bucket)
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         Client (Next.js 16 SSR)                            │
+│                      https://ecommerce.local                               │
+└───────────────────────────────┬────────────────────────────────────────────┘
+                                │
+                       ┌────────▼─────────┐
+                       │  NGINX Ingress   │
+                       │  mkcert TLS      │
+                       └────────┬─────────┘
+                                │
+       ┌─────────────────────────┼──────────────────────────┬──────────────┐
+       │                         │                          │              │
+┌──────▼──────┐         ┌────────▼────────┐         ┌────────▼────────┐    │
+│ Auth Svc    │         │ Products Svc    │         │ Orders Svc      │    │
+│ Mongo `auth`│         │ Mongo `products`│         │ Mongo `orders`  │    │
+└──────┬──────┘         └────────┬────────┘         └────────┬────────┘    │
+       │                         │                          │              │
+       │                 ┌───────▼────────┐         ┌────────▼────────┐    │
+       │                 │  Cart Svc      │         │ Payments Svc     │    │
+       │                 │  Mongo `cart`  │         │ Mongo `payments` │    │
+       │                 └───────┬────────┘         └────────┬────────┘    │
+       │                         │                          │              │
+       └─────────────────────────┴─────────────┬─────────────┴──────────────┘
+                                               │
+                                        ┌──────▼──────┐
+                                        │  NATS Bus   │
+                                        │ (Streaming) │
+                                        └──────┬──────┘
+                                               │
+                                        ┌──────▼──────┐
+                                        │   MinIO     │
+                                        │  (media)    │
+                                        └─────────────┘
 ```
-- **Pattern:** Independent Node.js/Express services communicating with at-least-once events, each owning a Mongo database + schema migration via Mongoose.
-- **State changes:** Orders stay unlocked; inventory is decremented only after `PaymentCreated`. Cart state persists until payment success.
-- **Media:** Product service streams uploads to MinIO; objects are publicly served over `https://minio-api.local/<bucket>/<key>`.
-- **Security:** All user flows go through HTTPS domains issued by mkcert; cookies are Secure + HTTP-only.
+**Key design decisions**
+- ✅ **Microservices + Database Per Service** – each service owns its schema on dedicated Mongo deployments
+- ✅ **Event-Driven Communication** – asynchronous coordination via NATS Streaming, shared contracts in `common`
+- ✅ **No Product Locking** – inventory is reduced only after `payment:created`, allowing optimistic selling
+- ✅ **MinIO Storage** – local S3-compatible storage for product images served via dedicated ingress
+- ✅ **Single Ingress / Multiple Domains** – `ecommerce.local` for the shop, `minio.local` for console, `minio-api.local` for object storage
 
 ---
 
-## 🧩 Service Catalog
-| Service | Responsibilities | Key APIs | Data | Events |
-|---------|------------------|----------|------|--------|
-| `auth` | User signup/signin/signout, JWT issuance via cookie, password hashing with scrypt | `POST /api/users/signup`, `POST /api/users/signin`, `POST /api/users/signout`, `GET /api/users/currentuser` | Mongo `auth.users` | n/a |
-| `products` | CRUD products, inventory enforcement post-payment, MinIO upload orchestration | `GET/POST/PUT /api/products` | Mongo `products.products` | Publishes `ProductCreated`, `ProductUpdated`; consumes `PaymentCreated` |
-| `cart` | Persist user carts, add/remove items, clear after payment | `GET /api/cart`, `POST /api/cart/items`, `DELETE /api/cart/items/:productId` | Mongo `cart.carts` | Consumes `PaymentCreated` |
-| `orders` | Build orders from cart snapshot, manual cancel, mark complete when paid | `POST/GET/DELETE /api/orders` | Mongo `orders.orders` | Publishes `OrderCreated`, `OrderCancelled`; consumes `PaymentCreated` |
-| `payments` | Validate ownership, charge Stripe, emit payment events | `POST /api/payments` | Mongo `payments.payments` + replica of `orders` | Publishes `PaymentCreated`; consumes `OrderCreated`, `OrderCancelled` |
-| `client` | Next.js 16 SSR storefront with Stripe Elements, cookie session hydration | `/` pages + auth/product/order routes | N/A | n/a |
-| `minio` | S3-compatible storage for product assets | Console `https://minio.local`, API `https://minio-api.local` | Buckets per service (default `product-images`) | n/a |
-| `common` | Shared npm package: typing, base Publisher/Listener, middlewares | - | - | - |
-| `nats-test` | Utility publishers/subscribers for local debugging | CLI | - | - |
+## 🛠 Tech Stack
+### Backend
+- **Runtime:** Node.js 20+, TypeScript 5
+- **Framework:** Express 5 + express-validator
+- **Data:** MongoDB (per service) via Mongoose 8
+- **Events:** NATS Streaming 0.17.0
+- **Payments:** Stripe SDK (test mode)
+- **Auth:** JWT in HTTP-only secure cookies
+- **Testing:** Jest + Supertest
+
+### Frontend
+- **Framework:** Next.js 16 (Pages Router) + React 19
+- **UI:** Bootstrap 5, Stripe Elements (`@stripe/react-stripe-js`)
+- **HTTP:** Axios with SSR-aware client helper
+
+### Infrastructure
+- **Cluster:** Kubernetes (Minikube or Docker Desktop)
+- **Dev loop:** Skaffold for build/deploy/watch
+- **Ingress:** NGINX Ingress Controller
+- **Certificates:** mkcert-generated TLS secrets
+- **Storage:** MinIO for product assets
+
+### Shared Library
+- **`@datnxecommerce/common`** (local npm package)
+  - Custom errors & middlewares
+  - Base Publisher/Listener classes
+  - Event typings (`product:created`, `payment:created`, ...)
 
 ---
 
-## 🗄️ Data Design
+## 🎯 Services
+### 1. Auth Service (`auth/`)
+- User signup, signin, signout
+- Password hashing with scrypt
+- Issues JWT stored in `session` cookie
+- Routes: `POST /api/users/signup`, `POST /api/users/signin`, `POST /api/users/signout`, `GET /api/users/currentuser`
+- Database: Mongo `auth.users`
+- Events: none
+
+### 2. Products Service (`products/`)
+- CRUD for products including MinIO image uploads
+- Stores `imageUrl` pointing to `https://minio-api.local/<bucket>/<key>`
+- Inventory is **not** decremented when orders are placed; only after payment
+- Routes: `GET/POST/PUT /api/products`, `GET /api/products/:id`
+- Events: publishes `product:created`, `product:updated`; consumes `payment:created`
+
+### 3. Cart Service (`cart/`)
+- Per-user cart stored in Mongo
+- Holds items until a payment succeeds
+- Listens to `payment:created` to clear purchased items
+- Routes: `GET /api/cart`, `POST /api/cart/items`, `DELETE /api/cart/items/:productId`
+
+### 4. Orders Service (`orders/`)
+- Builds orders from cart snapshot; no expiration or locking
+- Status: `Created`, `Complete`, `Cancelled`
+- Listens to `payment:created` to mark orders complete
+- Routes: `POST /api/orders`, `GET /api/orders`, `GET /api/orders/:id`, `DELETE /api/orders/:id`
+- Events: publishes `order:created`, `order:cancelled`
+
+### 5. Payments Service (`payments/`)
+- Validates ownership and status before charging Stripe
+- Emits `payment:created` with purchased items for downstream consumers
+- Routes: `POST /api/payments`
+- Events: publishes `payment:created`; consumes `order:created`, `order:cancelled`
+
+### 6. Client (`client/`)
+- Next.js 16 SSR storefront
+- Integrates Stripe Elements for modern card form
+- Pages include `/`, `/auth/*`, `/products/new`, `/orders/*`
+
+### 7. MinIO (`infra/k8s/minio/`)
+- Provides S3-compatible object storage with console + API ingress
+- Credentials via `minio-secret`
+
+### 8. Shared Package (`common/`)
+- Houses reusable logic, event contracts, and middlewares, published locally via `npm run pub`
+
+---
+
+## 🗄 Database Schemas
 ### Auth (`auth.users`)
-- `_id`, `email` (unique, lowercase), `password` (scrypt hash), `__v`.
-- JWT payload: `{ id, email, iat }` stored in cookie named `session`.
+| Field | Type | Notes |
+|-------|------|-------|
+| `_id` | ObjectId | Primary key |
+| `email` | string | Unique, lowercase |
+| `password` | string | Scrypt hash |
+| `__v` | number | Version key |
 
 ### Products (`products.products`)
-- Fields: `title`, `price`, `quantity`, `userId`, `version` (OCC), `imageUrl` (MinIO), timestamps.
-- Quantity only decremented inside `PaymentCreated` listener to avoid phantom reserves.
+| Field | Type | Notes |
+|-------|------|-------|
+| `_id` | ObjectId |
+| `title` | string |
+| `price` | number |
+| `quantity` | number | Current stock |
+| `imageUrl` | string | MinIO public URL |
+| `userId` | string | Owner |
+| `version` | number | OCC counter |
 
 ### Cart (`cart.carts`)
-- `userId`, `items[]` with `{ productId, quantity }` plus metadata for rendering.
-- Items removed when `PaymentCreated` arrives; no TTL.
+| Field | Type | Notes |
+|-------|------|-------|
+| `_id` | ObjectId |
+| `userId` | string |
+| `items[]` | array | `{ productId, quantity }` |
 
 ### Orders (`orders.orders`)
-- Snapshot of products: `items[].titleSnapshot`, `priceSnapshot`, `quantity` to maintain history.
-- Status enum: `Created`, `AwaitingPayment`, `Cancelled`, `Complete`. No `expiresAt` field.
+| Field | Type | Notes |
+|-------|------|-------|
+| `_id` | ObjectId |
+| `userId` | string |
+| `status` | enum | `Created`, `Complete`, `Cancelled` |
+| `items[]` | array | Snapshot of product details (title, price, quantity) |
+| `total` | number |
+| `version` | number |
 
 ### Payments (`payments.payments`, `payments.orders` replica)
-- Payment doc stores `orderId`, `stripeId` response, audit timestamps.
-- Replica order collection stays in sync through `OrderCreated`/`OrderCancelled` to validate ownership and status before hitting Stripe.
+| Field | Type | Notes |
+|-------|------|-------|
+| `_id` | ObjectId | Payment document |
+| `orderId` | string |
+| `stripeId` | string | Stripe charge ID |
+| `items[]` | array | Duplicated from order (event payload) |
+
+Replica `orders` collection mirrors orders for validation, synced via order events.
 
 ### MinIO Buckets
-- Default bucket `product-images` created lazily at startup.
-- Public read policy applied programmatically (`products/src/config/cloudinary.ts`).
+- Default bucket `product-images` auto-created at service startup with public-read policy
 
 ---
 
-## 🔔 Event-Driven Contracts
-| Event | Payload | Publisher | Consumers | Effects |
-|-------|---------|-----------|-----------|---------|
-| `product:created` | `{ id,title,price,quantity,userId,version,imageUrl }` | Products | (future listeners) | Broadcast catalog change |
-| `product:updated` | Same as above | Products | (future listeners) | Keep caches in sync |
-| `order:created` | `{ id,userId,status,items[],total,version }` | Orders | Payments | Payments caches order data |
-| `order:cancelled` | `{ id,version }` | Orders | Payments | Payments marks local copy cancelled |
-| `payment:created` | `{ id,orderId,stripeId,items[] }` | Payments | Products, Cart, Orders | Inventory decrement, cart purge, order status `Complete` |
+## 📨 Event Architecture
+| Event Subject | Publisher | Consumers | Payload |
+|---------------|-----------|-----------|---------|
+| `product:created` | Products | (future) | `{ id, title, price, quantity, imageUrl, userId, version }` |
+| `product:updated` | Products | (future) | Same as above |
+| `order:created` | Orders | Payments | `{ id, userId, status, total, items[], version }` |
+| `order:cancelled` | Orders | Payments | `{ id, version }` |
+| `payment:created` | Payments | Products, Cart, Orders | `{ id, orderId, stripeId, items[] }` |
 
-**Delivery semantics:** NATS Streaming, queue groups per service, manual `ack()` after durable processing. New pods derive client IDs from pod metadata to avoid collisions.
-
----
-
-## 🔁 Business Flows
-### Checkout Happy Path
-1. User adds items (`POST /api/cart/items`).
-2. `POST /api/orders` snapshots cart → status `Created`, publishes `order:created`.
-3. Payments service caches order and exposes it for Stripe.
-4. User submits Stripe token via `POST /api/payments { token, orderId }`.
-5. Payments charges test card, stores record, emits `payment:created` containing purchased item quantities.
-6. Downstream effects:
-   - Products decrements `quantity` per item.
-   - Cart removes purchased products.
-   - Orders marks `Complete`.
-
-### Order Cancellation
-- `DELETE /api/orders/:id` flips status to `Cancelled`, emits `order:cancelled`, which causes Payments to reject future charges for that order. Inventory remains untouched (never decremented pre-payment).
-
-### Media Upload Flow
-1. Seller attaches file when creating/updating product.
-2. Product service streams buffer to MinIO via internal endpoint (`minio-svc:9000`).
-3. Public URL `https://minio-api.local/product-images/<key>` returned in response and rendered on client.
+**Guarantees**
+- At-least-once delivery thanks to NATS Streaming durable subscriptions
+- Queue groups provide horizontal scaling while preventing duplicate handlers
+- OCC version numbers stop out-of-order updates from corrupting state
 
 ---
 
-## ☸️ Deploying on Minikube with mkcert & MinIO
+## 🔄 Complete Flow Diagrams
+### Flow 1: Create Product with MinIO Media
+```
+User ──POST /api/products──► Products Service
+        │                    1. Validate JWT + payload
+        │                    2. Upload image to MinIO (`minio-svc`)
+        │                    3. Persist product (quantity untouched)
+        │                    4. Publish `product:created`
+        ▼
+      Success ◄────────────── NATS (future consumers)
+```
+
+### Flow 2: Checkout Happy Path (Cart → Order → Payment)
+```
+┌──────────────┐
+│ User Browser │
+└─────┬────────┘
+      │ POST /api/cart/items { productId, quantity }
+      ▼
+┌──────────────┐    POST /api/orders { items[] }      ┌──────────────────────┐
+│  Cart Svc    │ ───────────────────────────────────► │ Orders Service       │
+└──────────────┘                                     │ - Snapshot items     │
+                                                     │ - Status=Created     │
+                                                     │ - Publish order evt  │
+                                                     └─────────┬────────────┘
+                                                               │ order:created
+                                                               ▼
+                                                         Payments Service caches order
+
+User submits Stripe token → POST /api/payments { token, orderId }
+Payments Service:
+ 1. Validates order ownership/status
+ 2. Charges Stripe
+ 3. Stores payment doc
+ 4. Publishes `payment:created` (includes items)
+
+Downstream reactions to `payment:created`:
+ - Products Service decrements inventory per item
+ - Cart Service removes purchased items
+ - Orders Service sets status = Complete
+```
+
+### Flow 3: Manual Order Cancellation
+```
+User ──DELETE /api/orders/:id──► Orders Service
+                                1. Verify ownership
+                                2. Set status=Cancelled
+                                3. Publish `order:cancelled`
+Orders UI reflects cancellation; inventory stays unchanged because it never decreased pre-payment.
+```
+
+### Flow 4: Media Access via MinIO
+```
+Admin Upload (Products Svc) ──► MinIO via internal svc (`minio-svc:9000`)
+Public Client Image Load ──► https://minio-api.local/product-images/<key>
+```
+
+---
+
+## 🚀 Getting Started
 ### Prerequisites
-- macOS or Linux with Docker.
-- `minikube`, `kubectl`, `skaffold`, `mkcert`, `helm` (optional for tooling).
-- Node.js 20+, npm 10+ for local builds.
+- Docker Desktop or Minikube
+- `kubectl`, `skaffold`, `mkcert`, `jq`
+- Node.js 20+ / npm 10+
 
-### 1. Start/prepare cluster
+### 1. Boot the cluster
 ```bash
 minikube start --cpus=4 --memory=8192
 minikube addons enable ingress
-minikube tunnel  # keep running for LoadBalancer IPs
+minikube tunnel   # Keep this terminal running
 ```
 
-### 2. Generate TLS certificates
+### 2. Generate TLS certs with mkcert
 ```bash
 mkcert -install
 mkcert ecommerce.local
 mkcert minio.local
 mkcert minio-api.local
-```
-Create secrets:
-```bash
 kubectl create secret tls ecommerce-local-tls \
   --cert=ecommerce.local.pem --key=ecommerce.local-key.pem
 kubectl create secret tls minio-local-tls \
@@ -137,101 +314,200 @@ kubectl create secret tls minio-api-local-tls \
   --cert=minio-api.local.pem --key=minio-api.local-key.pem
 ```
 
-### 3. Map domains
-Add to `/etc/hosts`:
+### 3. Map local domains
+Append to `/etc/hosts`:
 ```
 127.0.0.1 ecommerce.local minio.local minio-api.local
 ```
 
 ### 4. Secrets & Config
 ```bash
-kubectl create secret generic jwt-secret --from-literal=JWT_KEY='dev_jwt_key'
+kubectl create secret generic jwt-secret \
+  --from-literal=JWT_KEY='dev_jwt_key'
+
 kubectl create secret generic stripe-secret \
   --from-literal=STRIPE_SECRET_KEY='sk_test_xxx' \
   --from-literal=STRIPE_PUBLISHABLE_KEY='pk_test_xxx'
-# MinIO credentials (use values in infra/k8s/minio/minio-secret.example.yaml)
-kubectl apply -f infra/k8s/config/  # Mongo configs/secrets
-kubectl apply -f infra/k8s/minio/minio-depl.yaml
-kubectl apply -f infra/k8s/ingress/minio-ingress.yaml
+
+# Mongo + MinIO configs
+kubectl apply -f infra/k8s/config/
+kubectl apply -f infra/k8s/minio/
 ```
 
-### 5. Developer loop with Skaffold
+### 5. Run Skaffold dev loop
 ```bash
 skaffold dev
 ```
-- Builds Docker images for each service, feeds them into Minikube registry, applies manifests, and streams pod logs.
-- Rebuilds incrementally on file changes.
+Wait for logs showing each service listening on port 3000.
 
-### 6. Validate
-```bash
-kubectl get pods -A
-kubectl get ingress
-open https://ecommerce.local
-open https://minio.local
-```
-MinIO console login defaults: `minioadmin` / `minioadmin123` (override via secret). API bucket endpoints live at `https://minio-api.local`.
+### 6. Access portals
+- Shop: `https://ecommerce.local`
+- MinIO Console: `https://minio.local` (default creds `minioadmin` / `minioadmin123`)
+- MinIO API (public objects): `https://minio-api.local`
 
 ---
 
-## 🧪 API Testing Playbook
-### Recommended tools
-- **Postman**: Import `infra/postman/ecommerce.postman_collection.json`, set environment variable `baseUrl = https://ecommerce.local`.
-- **HTTPie / curl**: pass `-k` for self-signed certs.
+## 💻 Development
+### Repo Layout
+```
+├── auth/        # Auth service
+├── products/    # Product + MinIO upload service
+├── cart/        # Shopping cart service
+├── orders/      # Orders service
+├── payments/    # Stripe payments service
+├── client/      # Next.js app
+├── common/      # Shared npm package
+├── infra/
+│   ├── k8s/     # Kubernetes manifests (services, Mongo, ingress)
+│   └── postman/ # API collection
+└── skaffold.yaml
+```
 
-### Smoke script (curl)
+### Testing
+```bash
+cd auth && npm test
+cd products && npm test
+# ...repeat per service
+```
+Each service leverages Jest + Supertest, with helpers in `test/setup.ts`. NATS client is mocked for isolation.
+
+### Updating the shared package
+```bash
+cd common
+npm run pub  # build, version bump, npm publish (local registry optional)
+
+cd ../products
+npm install @datnxecommerce/common@latest
+```
+
+---
+
+## 🧪 Testing with Postman
+A curated collection lives at `infra/postman/ecommerce.postman_collection.json`.
+
+### Environment Setup
+1. Import the collection
+2. Create environment `Ecommerce Local`
+   - `baseUrl = https://ecommerce.local`
+3. Enable cookie jar to persist the `session` cookie
+
+### End-to-End Scenario
+1. **Signup** – `POST {{baseUrl}}/api/users/signup`
+2. **Signin** – `POST {{baseUrl}}/api/users/signin`
+3. **Create Product** – `POST /api/products` with `{ title, price, quantity }`
+4. **Add to Cart** – `POST /api/cart/items`
+5. **Create Order** – `POST /api/orders`
+6. **Pay** – `POST /api/payments` with `{ token: "tok_visa", orderId }`
+7. **Verify** – `GET /api/orders/:id`, `GET /api/products/:id`, `GET /api/cart`
+
+Detailed example requests mirror the earlier sample README, but adapt endpoints to carts and multiple items. Use Stripe test token `tok_visa`.
+
+### Curl Smoke Test
 ```bash
 BASE=https://ecommerce.local
 COOKIE_JAR=/tmp/ecommerce.cookie
 
-# Signup / signin
 curl -k -c $COOKIE_JAR -X POST $BASE/api/users/signup \
   -H 'Content-Type: application/json' \
   -d '{"email":"test@example.com","password":"password"}'
 
-# Create product (with optional image URL)
 PRODUCT_ID=$(curl -k -b $COOKIE_JAR -X POST $BASE/api/products \
   -H 'Content-Type: application/json' \
-  -d '{"title":"iPhone 15 Pro","price":999,"quantity":5}' | jq -r '.id')
+  -d '{"title":"iPhone","price":999,"quantity":5}' | jq -r '.id')
 
-# Add to cart and create order
 curl -k -b $COOKIE_JAR -X POST $BASE/api/cart/items \
   -H 'Content-Type: application/json' \
   -d "{\"productId\":\"$PRODUCT_ID\",\"quantity\":1}"
+
 ORDER_ID=$(curl -k -b $COOKIE_JAR -X POST $BASE/api/orders \
   -H 'Content-Type: application/json' \
   -d "{\"items\":[{\"productId\":\"$PRODUCT_ID\",\"quantity\":1}]}" | jq -r '.id')
 
-# Pay with Stripe test token
-toJSON='{ "token": "tok_visa", "orderId": "'$ORDER_ID'" }'
 curl -k -b $COOKIE_JAR -X POST $BASE/api/payments \
-  -H 'Content-Type: application/json' -d "$toJSON"
-
-# Verify inventory/order/cart
-curl -k -b $COOKIE_JAR $BASE/api/orders/$ORDER_ID | jq '.status'
-curl -k -b $COOKIE_JAR $BASE/api/products/$PRODUCT_ID | jq '.quantity'
-curl -k -b $COOKIE_JAR $BASE/api/cart | jq '.items'
+  -H 'Content-Type: application/json' \
+  -d "{\"token\":\"tok_visa\",\"orderId\":\"$ORDER_ID\"}"
 ```
 
-### Postman scenarios
-1. **Auth** – Signup → Signin → Current user (cookie session maintained automatically).
-2. **Product lifecycle** – Create, list, get, update; verify MinIO image URL resolves via `https://minio-api.local` (use `-k` or trust root CA).
-3. **Cart & Order** – Add multiple items, create order, cancel order, confirm statuses.
-4. **Payment happy path** – Use `tok_visa`, inspect Stripe Dashboard (test mode) for created charges.
-5. **Negative cases** – Attempt payment on cancelled order (`400`), request other user’s order (`401`), or reuse token after quantity depleted.
+---
+
+## 🐳 Deployment
+### Kubernetes Resources
+Each service ships with Deployment + Service + dedicated Mongo Deployment/Service. MinIO has its own stateful deployment with PVC.
+
+**Key environment variables**
+- `JWT_KEY` – all backend pods (from `jwt-secret`)
+- `NATS_URL`, `NATS_CLUSTER_ID`, `NATS_CLIENT_ID` – event bus configuration
+- `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_KEY` – payment secrets
+- Mongo host/user/password pulled from ConfigMaps + Secrets per service
+- MinIO creds injected into products deployment for uploads
+
+### Production Image Build
+```bash
+docker build -t <registry>/auth:latest auth
+# ...repeat per service
+
+docker push <registry>/auth:latest
+kubectl apply -f infra/k8s/
+```
 
 ---
 
-## 🔧 Operational Notes
-- **Scaling:** Each service may scale independently; NATS queue groups ensure only one pod handles a message copy.
-- **Observability:** Tail logs via `kubectl logs -l app=<service> -f`. Consider enabling NATS monitoring on port `8222`.
-- **Stateful components:** MongoDB and MinIO currently use ephemeral volumes (suitable for dev). Swap `emptyDir` with PersistentVolumeClaims for durability.
-- **Secrets management:** All sensitive values (JWT/Stripe/MinIO creds) live in Kubernetes secrets. Never commit them.
+## 🔐 Security Features
+- HTTPS-only domains via mkcert TLS secrets
+- JWT stored in HTTP-only, Secure cookie `session`
+- Central error handler prevents leaking stack traces
+- Authorization middleware ensures resource ownership (e.g., product updates)
+- Stripe keys stored solely in Kubernetes secrets
 
 ---
 
-## 📚 References
-- `infra/k8s/**` – Kubernetes manifests for every component, including MinIO ingress.
-- `DOMAINS.md` – Quick domain/TLS checklist.
-- `common/` – Shared npm library + publishing workflow.
+## 🔮 Future Enhancements
+- [ ] Reinstate product reservation + expiration service using Redis/Bull
+- [ ] Add email notifications for order/payment events
+- [ ] Persistent volumes for Mongo & MinIO (currently `emptyDir` for dev)
+- [ ] Automated test coverage reports in CI
+- [ ] Observability stack (Grafana + Prometheus + Loki)
+- [ ] Admin dashboards for product moderation
 
-Happy shipping! 🚀
+---
+
+## 📚 Learning Resources
+- NATS Streaming Docs – https://docs.nats.io
+- mkcert – https://github.com/FiloSottile/mkcert
+- Stripe Payments – https://stripe.com/docs/payments
+- Kubernetes Basics – https://kubernetes.io/docs/home/
+
+---
+
+## 🤝 Contributing
+1. Fork the repo
+2. Create a branch: `git checkout -b feature/amazing`
+3. Commit and push
+4. Open a PR with context + testing notes
+
+---
+
+## 📝 License
+ISC License – see LICENSE file for details.
+
+---
+
+## 👤 Author
+**DatNX**
+- GitHub: [@Rayloveyou](https://github.com/Rayloveyou)
+- npm: [@datnxecommerce](https://www.npmjs.com/org/datnxecommerce)
+
+---
+
+## 🙏 Acknowledgments
+- Inspired by Stephen Grider's microservices curriculum
+- Thanks to the NATS.io, Kubernetes, and Next.js communities
+
+---
+
+## 📞 Support
+- Open a GitHub issue with logs + reproduction steps
+- Check `infra/postman` for ready-made API tests
+- Reach out via repo discussions for architectural questions
+
+**Happy coding! 🚀**
