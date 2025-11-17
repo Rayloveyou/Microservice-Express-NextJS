@@ -1,655 +1,1228 @@
-# 🛒 E‑Commerce Microservices (Production‑like, Minikube)
+# 🛒 E-Commerce Microservices Platform
 
-A complete multi‑service e‑commerce system running on Kubernetes (Minikube) with TLS via mkcert. The system uses event‑driven communication (NATS), per‑service MongoDB, and a Next.js client. The architecture has been redesigned to remove expiration/locking: stock is only decremented after Stripe payment succeeds.
+**Production-ready microservices e-commerce system on Kubernetes (Minikube) with event-driven architecture**
 
-Highlights
-- No product locking or expiration service
-- Stripe Elements on client; PaymentCreated drives inventory updates
-- Shared NPM package: `@datnxecommerce/common`
-- Ingress domain: `ecommerce.local` (TLS via mkcert)
-- Dev loop: Skaffold, containers built in prod mode
+Hệ thống thương mại điện tử đa dịch vụ chạy trên Kubernetes với NATS event bus, MongoDB per service, Next.js SSR client, và Stripe Elements payment.
 
-
-## Contents
-- Architecture & Directory
-- Services (responsibilities, routes, envs, DB schemas, events)
-- Events (contracts)
-- Local dev on Minikube with mkcert
-- Secrets and credentials
-- Postman test scenarios (end‑to‑end)
-- Kubernetes resources & ingress
-- Troubleshooting
-
-
-## Architecture
-
-```
-Browser (Next.js) → NGINX Ingress (TLS, ecommerce.local)
-                             │
-        ┌──────────┬─────────┼──────────┬──────────┬──────────┐
-        │          │         │          │          │          │
-      Auth      Products    Orders    Payments     Cart      NATS
-      Mongo       Mongo      Mongo      Mongo      Mongo     (bus)
-        ▲           ▲          ▲          ▲          ▲          
-        └─────────────── Event messages over NATS ─────────────┘
-```
-
-Directory (top‑level)
-```
-auth/ products/ orders/ payments/ cart/ client/ common/ infra/k8s/ skaffold.yaml
-```
-
-
-## Services (deep dive)
-
-Shared NPM package: `@datnxecommerce/common`
-- Errors, middlewares (auth/validation), event base classes & typings.
-
-Auth (image `datnx/auth`)
-- Routes: POST `/api/users/signup`, POST `/signin`, POST `/signout`, GET `/currentuser`
-- Env: `JWT_KEY`, Mongo creds via ConfigMap/Secret
-- DB (Mongo `auth`): `users` { _id, email unique, password, __v }
-- Events: none
-
-Products (image `datnx/product`)
-- Routes: `GET /api/products`, `GET /:id`, `POST /api/products`, `PUT /:id`
-- Env: `JWT_KEY`, `NATS_URL`, `NATS_CLUSTER_ID=ticketing`, `NATS_CLIENT_ID` (pod name)
-- DB (Mongo `products`): `products` { _id, title, price, quantity, userId, version, __v }
-- Events: publish ProductCreated/ProductUpdated; consume PaymentCreated (to reduce quantity)
-
-Cart (image `datnx/cart`)
-- Routes: `GET /api/cart`, `POST /api/cart/items`, `DELETE /api/cart/items/:productId`
-- Env: `JWT_KEY`, NATS settings, Mongo creds
-- DB (Mongo `cart`): `carts` { _id, userId, items: [ { productId, quantity } ] }
-- Events: consume PaymentCreated (remove purchased items)
-
-Orders (image `datnx/order`)
-- Routes: `POST /api/orders`, `GET /api/orders`, `GET /api/orders/:id`, `DELETE /api/orders/:id`
-- Env: `JWT_KEY`, NATS settings, Mongo creds
-- DB (Mongo `orders`): `orders` { _id, userId, status, items[ { productId, titleSnapshot, priceSnapshot, quantity } ], total, version }
-- Events: publish OrderCreated/OrderCancelled (no expiredAt);
-
-Payments (image `datnx/payment`)
-- Routes: `POST /api/payments` { token, orderId }
-- Env: `JWT_KEY`, `STRIPE_SECRET_KEY`, NATS settings, Mongo creds
-- DB (Mongo `payments`): `payments` { _id, orderId, stripeId, __v }
-- Events: publish PaymentCreated { orderId, items[], stripeId }
-
-Client (image `datnx/client`)
-- Next.js 16, production build, custom `server.js`
-- Stripe Elements (`@stripe/react-stripe-js` & `@stripe/stripe-js`)
-- Env: `NEXT_PUBLIC_STRIPE_KEY` injected from K8s `stripe-secret` (publishable)
-
-NATS (nats-streaming:0.17.0)
-- Cluster id: `ticketing`, svc `nats-svc` (4222)
-
-
-## Events (contracts)
-
-ProductCreated
-```json
-{ "id": "...", "title": "...", "price": 999, "quantity": 10, "userId": "...", "version": 0 }
-```
-
-ProductUpdated
-```json
-{ "id": "...", "title": "...", "price": 899, "quantity": 6, "userId": "...", "version": 2 }
-```
-
-OrderCreated
-```json
-{ "id": "...", "userId": "...", "status": "Created", "items": [ { "productId": "...", "quantity": 1, "priceSnapshot": 999, "titleSnapshot": "..." } ], "total": 999, "version": 0 }
-```
-
-OrderCancelled
-```json
-{ "id": "...", "version": 1 }
-```
-
-PaymentCreated
-```json
-{ "id": "...", "orderId": "...", "stripeId": "ch_...", "items": [ { "productId": "...", "quantity": 1 } ] }
-```
-
-
-## Local development (Minikube + mkcert)
-
-Prereqs: Docker Desktop/Minikube, kubectl, Skaffold, Node 20+, mkcert
-
-1) Start cluster & ingress
-```bash
-minikube start --cpus=4 --memory=8192
-minikube addons enable ingress
-minikube tunnel   # keep this terminal running
-```
-
-2) TLS & hosts
-```bash
-mkcert -install
-mkcert ecommerce.local
-kubectl create secret tls ecommerce-local-tls \
-  --cert=ecommerce.local.pem \
-  --key=ecommerce.local-key.pem
-echo "127.0.0.1 ecommerce.local" | sudo tee -a /etc/hosts
-```
-
-3) Required secrets
-```bash
-kubectl create secret generic jwt-secret \
-  --from-literal=JWT_KEY='dev_jwt_secret'
-
-kubectl create secret generic stripe-secret \
-  --from-literal=STRIPE_SECRET_KEY='sk_test_xxx' \
-  --from-literal=STRIPE_PUBLISHABLE_KEY='pk_test_xxx'
-```
-
-4) Dev loop
-```bash
-skaffold dev
-```
-
-Open: https://ecommerce.local
-
-
-## Kubernetes resources & ingress
-
-Ingress: `infra/k8s/ingress/ingress.yaml`
-- Host `ecommerce.local`
-- Routes:
-  - `/` → `client-svc`
-  - `/api/users` → `auth-svc`
-  - `/api/products` → `product-svc`
-  - `/api/cart` → `cart-svc`
-  - `/api/orders` → `order-svc`
-  - `/api/payments` → `payment-svc`
-
-Deployments & Services (per service): see `infra/k8s/*/*-depl.yaml`
-- Each service uses its own Mongo deployment/service + ConfigMap/Secret for creds
-- NATS at `nats-svc:4222`
-
-Client deployment injects env:
-```yaml
-env:
-- name: NEXT_PUBLIC_STRIPE_KEY
-  valueFrom:
-    secretKeyRef:
-      name: stripe-secret
-      key: STRIPE_PUBLISHABLE_KEY
-```
-
-
-## Secrets & credentials
-
-You must provide:
-- `jwt-secret` → `JWT_KEY`
-- `stripe-secret` → `STRIPE_SECRET_KEY` (secret), `STRIPE_PUBLISHABLE_KEY` (publishable)
-- Mongo usernames/passwords (already templated in `infra/k8s/**` ConfigMaps/Secrets)
-
-Client runtime gets publishable key via SSR props; if the key is wrong you’ll see Stripe 401/invalid key.
-
-
-## Postman test scenarios
-
-Environment
-- `baseUrl` = `https://ecommerce.local`
-- Accept self‑signed certificate
-
-Import collection
-- File: `infra/postman/ecommerce.postman_collection.json`
-
-1) Auth
-- POST `{{baseUrl}}/api/users/signup` { email, password }
-- POST `{{baseUrl}}/api/users/signin`
-- GET `{{baseUrl}}/api/users/currentuser`
-
-2) Products
-- POST `{{baseUrl}}/api/products` { title, price, quantity }
-- GET `{{baseUrl}}/api/products`
-- GET `{{baseUrl}}/api/products/:id`
-
-3) Cart
-- POST `{{baseUrl}}/api/cart/items` { productId, quantity }
-- GET `{{baseUrl}}/api/cart`
-
-4) Orders & payments
-- POST `{{baseUrl}}/api/orders` { items: [{ productId, quantity }] }
-- GET `{{baseUrl}}/api/orders/:orderId`
-- POST `{{baseUrl}}/api/payments` { token: "tok_visa", orderId }
-  - `tok_visa` works in Stripe test mode (no need to generate token manually)
-- Verify order becomes Complete, product quantity decreases, cart clears
-
-
-## Stripe integration (client)
-
-- Uses Stripe Elements; card form embedded on order page.
-- We pass `NEXT_PUBLIC_STRIPE_KEY` to the page via server‑side props (runtime‑safe).
-- Test card: `4242 4242 4242 4242`, any future date, any CVC.
-
-
-## Troubleshooting
-
-- Invalid publishable key: `kubectl exec -it $(kubectl get pods -l app=client -o jsonpath='{.items[0].metadata.name}') -- printenv | grep STRIPE`
-- 401 from `api.stripe.com/v1/tokens`: publishable key wrong/disabled
-- Next.js dev vs prod env: client runs `node server.js` and uses SSR to expose the key
-- If Stripe popup appears with legacy warning, ensure `react-stripe-checkout` is removed and Elements is used
-
-
-## Contributing & license
-
-- Shared changes → publish new `@datnxecommerce/common` and bump services
-- Keep event contracts backward compatible
-- License: ISC
-
-Author: DatNX · Host: https://ecommerce.local · Org: @datnxecommerce
-
-### **Flow 1: Create Product**
-
-```
-┌─────────┐
-│  User   │
-└────┬────┘
-     │ POST /api/products
-     │ { title: "Concert Ticket", price: 150 }
-     ▼
-┌─────────────────┐
-│ Products Service│
-│                 │
-│ 1. Validate JWT │
-│ 2. Create in DB │
-│ 3. Save product │
-└────┬────────────┘
-     │ Publish: product:created
-     ▼
-┌──────────────┐
-│ NATS Stream  │
-└────┬─────────┘
-     │ Broadcast
-     ▼
-┌─────────────────┐
-│ Orders Service  │
-│                 │
-│ 1. Receive event│
-│ 2. Create local │
-│    product copy │
-│ 3. msg.ack()    │
-└─────────────────┘
-```
+[![Kubernetes](https://img.shields.io/badge/kubernetes-v1.28-blue.svg)](https://kubernetes.io/)
+[![Next.js](https://img.shields.io/badge/next.js-16.0-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/typescript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/node.js-20+-green.svg)](https://nodejs.org/)
 
 ---
 
-### **Flow 2: Create Order (Happy Path - User Pays)**
+## 📑 Mục lục
 
-```
-┌─────────┐
-│  User   │
-└────┬────┘
-     │ POST /api/orders
-     │ { productId: "abc123" }
+1. [Tổng quan kiến trúc](#-tổng-quan-kiến-trúc)
+2. [Các dịch vụ (Services)](#-các-dịch-vụ-services)
+3. [Database Schemas](#-database-schemas)
+4. [Event Architecture](#-event-architecture)
+5. [Luồng hoạt động (Flows)](#-luồng-hoạt-động-flows)
+6. [Cài đặt local (Minikube + mkcert)](#-cài-đặt-local-minikube--mkcert)
+7. [Kubernetes Infrastructure](#-kubernetes-infrastructure)
+8. [Test với Postman](#-test-với-postman)
+9. [Troubleshooting](#-troubleshooting)
+10. [Tech Stack](#-tech-stack)
+
+---
+
+## 🏗 Tổng quan kiến trúc
+
+### Kiến trúc hiện tại (Updated Architecture)
+
+**Thay đổi quan trọng:**
+- ❌ **Không có expiration service** - Đã loại bỏ logic hết hạn đơn hàng 15 phút
+- ❌ **Không lock sản phẩm khi tạo order** - Sản phẩm không bị reserve trước
+- ✅ **Giảm số lượng sau khi thanh toán** - Products service nhận event \`PaymentCreated\` mới giảm quantity
+- ✅ **Cart được giữ đến khi thanh toán** - Cart chỉ xóa items sau khi payment thành công
+- ✅ **Stripe Elements** - Thay thế legacy Stripe Checkout popup
+
+\`\`\`
+┌─────────────────────────────────────────────────────────────────┐
+│                     Browser (Next.js 16 SSR)                    │
+│                    https://ecommerce.local                      │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                   ┌─────────▼─────────┐
+                   │  Ingress (NGINX)  │
+                   │   TLS (mkcert)    │
+                   └─────────┬─────────┘
+                             │
+        ┌────────────┬───────┼────────┬─────────┬──────────┐
+        │            │       │        │         │          │
+    ┌───▼───┐  ┌────▼───┐ ┌─▼────┐ ┌─▼─────┐ ┌─▼─────┐  │
+    │ Auth  │  │Products│ │Orders│ │Payment│ │ Cart  │  │
+    │MongoDB│  │MongoDB │ │MongoDB│ │MongoDB│ │MongoDB│  │
+    └───┬───┘  └────┬───┘ └─┬────┘ └─┬─────┘ └─┬─────┘  │
+        │           │       │         │         │         │
+        └───────────┴───────┴─────────┴─────────┴─────────┘
+                             │
+                      ┌──────▼──────┐
+                      │    NATS     │
+                      │ Streaming   │
+                      │  (Event Bus)│
+                      └─────────────┘
+\`\`\`
+
+### Directory Structure
+
+\`\`\`
+ticketing/
+├── auth/                   # Authentication service
+├── products/              # Product management + inventory
+├── orders/                # Order management (no expiration)
+├── payments/              # Stripe payment processing
+├── cart/                  # Shopping cart
+├── client/                # Next.js frontend (Stripe Elements)
+├── common/                # Shared NPM package (@datnxecommerce/common)
+├── infra/
+│   ├── k8s/              # Kubernetes manifests
+│   │   ├── auth/
+│   │   ├── product/
+│   │   ├── order/
+│   │   ├── payment/
+│   │   ├── cart/
+│   │   ├── client/
+│   │   ├── nats/
+│   │   ├── ingress/
+│   │   └── config/       # Secrets & ConfigMaps
+│   ├── postman/          # Postman collection
+│   └── tls-certs/        # mkcert certificates
+├── skaffold.yaml
+└── README.md
+\`\`\`
+
+---
+
+## 🎯 Các dịch vụ (Services)
+
+### 1. Auth Service (\`datnx/auth\`)
+
+**Chức năng:**
+- Đăng ký / đăng nhập user
+- JWT authentication với HTTP-only cookies
+- Password hashing (scrypt + salt)
+
+**API Routes:**
+- \`POST /api/users/signup\` - Đăng ký
+- \`POST /api/users/signin\` - Đăng nhập
+- \`POST /api/users/signout\` - Đăng xuất
+- \`GET /api/users/currentuser\` - Lấy thông tin user hiện tại
+
+**Environment:**
+- \`JWT_KEY\` - Secret key để sign JWT
+- \`MONGO_HOST\`, \`MONGO_PORT\` - MongoDB connection
+- \`MONGO_USERNAME\`, \`MONGO_PASSWORD\` - Mongo credentials
+
+**Database:** MongoDB \`auth\`
+- Collection \`users\`
+
+**Events:** Không publish/consume events
+
+---
+
+### 2. Products Service (\`datnx/product\`)
+
+**Chức năng:**
+- CRUD sản phẩm
+- Quản lý inventory (quantity)
+- **Giảm quantity khi nhận event PaymentCreated**
+- Publish events khi tạo/update sản phẩm
+
+**API Routes:**
+- \`GET /api/products\` - List tất cả sản phẩm
+- \`GET /api/products/:id\` - Chi tiết sản phẩm
+- \`POST /api/products\` - Tạo sản phẩm mới (auth required)
+- \`PUT /api/products/:id\` - Update sản phẩm (owner only)
+
+**Environment:**
+- \`JWT_KEY\`
+- \`NATS_URL\` - \`http://nats-svc:4222\`
+- \`NATS_CLUSTER_ID\` - \`ticketing\`
+- \`NATS_CLIENT_ID\` - Pod name (unique)
+- Mongo credentials
+
+**Database:** MongoDB \`products\`
+- Collection \`products\`
+
+**Events:**
+- **Publish:** \`ProductCreated\`, \`ProductUpdated\`
+- **Consume:** \`PaymentCreated\` → Giảm quantity theo items
+
+---
+
+### 3. Cart Service (\`datnx/cart\`)
+
+**Chức năng:**
+- Quản lý giỏ hàng user
+- Add/remove items
+- **Giữ items cho đến khi payment thành công**
+- Clear cart sau khi nhận PaymentCreated
+
+**API Routes:**
+- \`GET /api/cart\` - Lấy giỏ hàng hiện tại
+- \`POST /api/cart/items\` - Thêm item vào cart
+- \`DELETE /api/cart/items/:productId\` - Xóa item khỏi cart
+
+**Environment:**
+- \`JWT_KEY\`
+- \`NATS_URL\`, \`NATS_CLUSTER_ID\`, \`NATS_CLIENT_ID\`
+- Mongo credentials
+
+**Database:** MongoDB \`cart\`
+- Collection \`carts\`
+
+**Events:**
+- **Consume:** \`PaymentCreated\` → Xóa purchased items khỏi cart
+
+---
+
+### 4. Orders Service (\`datnx/order\`)
+
+**Chức năng:**
+- Tạo order từ cart items
+- **KHÔNG có expiration** - Order không tự động hủy
+- **KHÔNG lock sản phẩm** - Sản phẩm vẫn available cho người khác
+- Cancel order manually
+
+**API Routes:**
+- \`POST /api/orders\` - Tạo order mới
+- \`GET /api/orders\` - List orders của user
+- \`GET /api/orders/:id\` - Chi tiết order
+- \`DELETE /api/orders/:id\` - Cancel order
+
+**Environment:**
+- \`JWT_KEY\`
+- \`NATS_URL\`, \`NATS_CLUSTER_ID\`, \`NATS_CLIENT_ID\`
+- Mongo credentials
+
+**Database:** MongoDB \`orders\`
+- Collection \`orders\`
+
+**Events:**
+- **Publish:** \`OrderCreated\`, \`OrderCancelled\`
+- **Consume:** \`PaymentCreated\` → Update order status = Complete
+
+---
+
+### 5. Payments Service (\`datnx/payment\`)
+
+**Chức năng:**
+- Xử lý thanh toán qua Stripe Charges API
+- Verify order ownership & status
+- Publish PaymentCreated với danh sách items
+
+**API Routes:**
+- \`POST /api/payments\` - Tạo payment charge
+  - Body: \`{ token, orderId }\`
+  - Token: Stripe token từ Elements
+
+**Environment:**
+- \`JWT_KEY\`
+- \`STRIPE_SECRET_KEY\` - Stripe secret key (test mode)
+- \`NATS_URL\`, \`NATS_CLUSTER_ID\`, \`NATS_CLIENT_ID\`
+- Mongo credentials
+
+**Database:** MongoDB \`payments\`
+- Collection \`payments\`
+- Collection \`orders\` (replica để validate)
+
+**Events:**
+- **Publish:** \`PaymentCreated\` - Include \`orderId\` và \`items[]\`
+- **Consume:** \`OrderCreated\`, \`OrderCancelled\` - Sync order data locally
+
+---
+
+### 6. Client (\`datnx/client\`)
+
+**Chức năng:**
+- Next.js 16 SSR application
+- Stripe Elements integration (modern card form)
+- Production build với custom \`server.js\`
+- Cookie-based authentication
+
+**Tech:**
+- Next.js 16 (Pages Router)
+- React 19
+- Bootstrap 5
+- Axios
+- \`@stripe/stripe-js\` + \`@stripe/react-stripe-js\`
+
+**Environment:**
+- \`NEXT_PUBLIC_STRIPE_KEY\` - Stripe publishable key
+  - Injected từ K8s secret \`stripe-secret\`
+  - Passed qua SSR props để runtime-safe
+
+**Pages:**
+- \`/\` - Landing page
+- \`/auth/signup\`, \`/auth/signin\`, \`/auth/signout\`
+- \`/products/new\` - Tạo sản phẩm
+- \`/orders/:orderId\` - Order detail + Stripe payment form
+- \`/orders/sell\` - Quản lý sản phẩm của seller
+
+---
+
+### 7. NATS Streaming
+
+**Image:** \`nats-streaming:0.17.0\`
+
+**Config:**
+- Cluster ID: \`ticketing\`
+- Client port: \`4222\`
+- Monitoring: \`8222\`
+
+**Purpose:**
+- Event bus cho inter-service communication
+- At-least-once delivery
+- Queue groups để load balance
+
+---
+
+### 8. Shared Package: \`@datnxecommerce/common\`
+
+**Nội dung:**
+- Custom errors (BadRequestError, NotFoundError, etc.)
+- Middlewares: \`requireAuth\`, \`currentUser\`, \`validateRequest\`, \`errorHandler\`
+- Event base classes: \`Publisher\`, \`Listener\`
+- Event interfaces: \`ProductCreated\`, \`OrderCreated\`, \`PaymentCreated\`, etc.
+
+**Update workflow:**
+\`\`\`bash
+cd common
+npm run pub   # Build, bump version, publish
+cd ../products
+npm install @datnxecommerce/common@latest
+\`\`\`
+
+---
+
+## 📊 Database Schemas
+
+### Auth Database (MongoDB: \`auth\`)
+
+#### Collection: \`users\`
+
+| Field | Type | Required | Unique | Index | Description |
+|-------|------|----------|--------|-------|-------------|
+| \`_id\` | ObjectId | ✅ | ✅ | Primary | Auto-generated |
+| \`email\` | String | ✅ | ✅ | Yes | Email (lowercase) |
+| \`password\` | String | ✅ | ❌ | No | Hashed với scrypt |
+| \`__v\` | Number | ✅ | ❌ | No | Mongoose version |
+
+**Example:**
+\`\`\`json
+{
+  "_id": "673abc123def456789012345",
+  "email": "user@test.com",
+  "password": "$scrypt$...",
+  "__v": 0
+}
+\`\`\`
+
+---
+
+### Products Database (MongoDB: \`products\`)
+
+#### Collection: \`products\`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| \`_id\` | ObjectId | ✅ | Auto-generated |
+| \`title\` | String | ✅ | Tên sản phẩm |
+| \`price\` | Number | ✅ | Giá (>= 0) |
+| \`quantity\` | Number | ✅ | Số lượng tồn kho |
+| \`userId\` | String | ✅ | Owner user ID |
+| \`version\` | Number | ✅ | OCC version |
+| \`__v\` | Number | ✅ | Mongoose version |
+
+**Business Logic:**
+- Quantity chỉ giảm khi nhận \`PaymentCreated\` event
+- Không có field \`orderId\` (không lock sản phẩm)
+- Version tăng mỗi khi update
+
+**Example:**
+\`\`\`json
+{
+  "_id": "673prod123456789012345",
+  "title": "iPhone 15 Pro",
+  "price": 999,
+  "quantity": 50,
+  "userId": "673abc123def456789012345",
+  "version": 2,
+  "__v": 0
+}
+\`\`\`
+
+---
+
+### Cart Database (MongoDB: \`cart\`)
+
+#### Collection: \`carts\`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| \`_id\` | ObjectId | ✅ | Auto-generated |
+| \`userId\` | String | ✅ | User owner |
+| \`items\` | Array | ✅ | Danh sách items |
+| \`items[].productId\` | String | ✅ | Product reference |
+| \`items[].quantity\` | Number | ✅ | Số lượng |
+| \`__v\` | Number | ✅ | Mongoose version |
+
+**Example:**
+\`\`\`json
+{
+  "_id": "673cart123456789012345",
+  "userId": "673abc123def456789012345",
+  "items": [
+    { "productId": "673prod111111111111111", "quantity": 2 },
+    { "productId": "673prod222222222222222", "quantity": 1 }
+  ],
+  "__v": 0
+}
+\`\`\`
+
+---
+
+### Orders Database (MongoDB: \`orders\`)
+
+#### Collection: \`orders\`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| \`_id\` | ObjectId | ✅ | Auto-generated |
+| \`userId\` | String | ✅ | User owner |
+| \`status\` | String (Enum) | ✅ | Created, Cancelled, Complete, AwaitingPayment |
+| \`items\` | Array | ✅ | Snapshot items |
+| \`items[].productId\` | String | ✅ | Product ID |
+| \`items[].titleSnapshot\` | String | ✅ | Title lúc đặt hàng |
+| \`items[].priceSnapshot\` | Number | ✅ | Price lúc đặt hàng |
+| \`items[].quantity\` | Number | ✅ | Số lượng |
+| \`total\` | Number | ✅ | Tổng tiền |
+| \`version\` | Number | ✅ | OCC version |
+| \`__v\` | Number | ✅ | Mongoose version |
+
+**Lưu ý:**
+- ❌ **KHÔNG có field \`expiredAt\`** (đã loại bỏ expiration)
+- Status flow: \`Created\` → \`Complete\` (hoặc \`Cancelled\`)
+
+**Example:**
+\`\`\`json
+{
+  "_id": "673order123456789012345",
+  "userId": "673abc123def456789012345",
+  "status": "Created",
+  "items": [
+    {
+      "productId": "673prod111111111111111",
+      "titleSnapshot": "iPhone 15 Pro",
+      "priceSnapshot": 999,
+      "quantity": 1
+    }
+  ],
+  "total": 999,
+  "version": 0,
+  "__v": 0
+}
+\`\`\`
+
+---
+
+### Payments Database (MongoDB: \`payments\`)
+
+#### Collection: \`payments\`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| \`_id\` | ObjectId | ✅ | Auto-generated |
+| \`orderId\` | String | ✅ | Order reference |
+| \`stripeId\` | String | ✅ | Stripe charge ID (ch_xxx) |
+| \`__v\` | Number | ✅ | Mongoose version |
+
+**Example:**
+\`\`\`json
+{
+  "_id": "673pay123456789012345",
+  "orderId": "673order123456789012345",
+  "stripeId": "ch_3STDSfRRsPUjHZ5Y10uLGpsR",
+  "__v": 0
+}
+\`\`\`
+
+#### Collection: \`orders\` (Replica)
+
+Local cache để validate order trước khi payment:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| \`_id\` | String | Order ID từ Orders service |
+| \`userId\` | String | User owner |
+| \`status\` | String | Order status |
+| \`total\` | Number | Total amount |
+| \`version\` | Number | Sync version |
+
+---
+
+## 📨 Event Architecture
+
+### Event Catalog
+
+| Event | Publisher | Consumers | Purpose |
+|-------|-----------|-----------|---------|
+| \`ProductCreated\` | Products | (none currently) | Notify khi có sản phẩm mới |
+| \`ProductUpdated\` | Products | (none currently) | Notify khi sản phẩm thay đổi |
+| \`OrderCreated\` | Orders | Payments | Replicate order data để validate |
+| \`OrderCancelled\` | Orders | Payments | Update order status locally |
+| \`PaymentCreated\` | Payments | Products, Cart, Orders | Giảm inventory, clear cart, mark order complete |
+
+---
+
+### Event Contracts
+
+#### ProductCreated
+
+\`\`\`typescript
+interface ProductCreatedEvent {
+  subject: 'product:created';
+  data: {
+    id: string;
+    title: string;
+    price: number;
+    quantity: number;
+    userId: string;
+    version: number;
+  };
+}
+\`\`\`
+
+**Example:**
+\`\`\`json
+{
+  "subject": "product:created",
+  "data": {
+    "id": "673prod123456789012345",
+    "title": "iPhone 15 Pro",
+    "price": 999,
+    "quantity": 50,
+    "userId": "673abc123def456789012345",
+    "version": 0
+  }
+}
+\`\`\`
+
+---
+
+#### ProductUpdated
+
+\`\`\`typescript
+interface ProductUpdatedEvent {
+  subject: 'product:updated';
+  data: {
+    id: string;
+    title: string;
+    price: number;
+    quantity: number;
+    userId: string;
+    version: number;
+  };
+}
+\`\`\`
+
+**Example:**
+\`\`\`json
+{
+  "subject": "product:updated",
+  "data": {
+    "id": "673prod123456789012345",
+    "title": "iPhone 15 Pro - Updated",
+    "price": 899,
+    "quantity": 45,
+    "userId": "673abc123def456789012345",
+    "version": 2
+  }
+}
+\`\`\`
+
+---
+
+#### OrderCreated
+
+\`\`\`typescript
+interface OrderCreatedEvent {
+  subject: 'order:created';
+  data: {
+    id: string;
+    userId: string;
+    status: 'Created';
+    items: Array<{
+      productId: string;
+      titleSnapshot: string;
+      priceSnapshot: number;
+      quantity: number;
+    }>;
+    total: number;
+    version: number;
+  };
+}
+\`\`\`
+
+**Example:**
+\`\`\`json
+{
+  "subject": "order:created",
+  "data": {
+    "id": "673order123456789012345",
+    "userId": "673abc123def456789012345",
+    "status": "Created",
+    "items": [
+      {
+        "productId": "673prod111111111111111",
+        "titleSnapshot": "iPhone 15 Pro",
+        "priceSnapshot": 999,
+        "quantity": 1
+      }
+    ],
+    "total": 999,
+    "version": 0
+  }
+}
+\`\`\`
+
+---
+
+#### OrderCancelled
+
+\`\`\`typescript
+interface OrderCancelledEvent {
+  subject: 'order:cancelled';
+  data: {
+    id: string;
+    version: number;
+  };
+}
+\`\`\`
+
+**Example:**
+\`\`\`json
+{
+  "subject": "order:cancelled",
+  "data": {
+    "id": "673order123456789012345",
+    "version": 1
+  }
+}
+\`\`\`
+
+---
+
+#### PaymentCreated (Quan trọng nhất!)
+
+\`\`\`typescript
+interface PaymentCreatedEvent {
+  subject: 'payment:created';
+  data: {
+    id: string;
+    orderId: string;
+    stripeId: string;
+    items: Array<{
+      productId: string;
+      quantity: number;
+    }>;
+  };
+}
+\`\`\`
+
+**Example:**
+\`\`\`json
+{
+  "subject": "payment:created",
+  "data": {
+    "id": "673pay123456789012345",
+    "orderId": "673order123456789012345",
+    "stripeId": "ch_3STDSfRRsPUjHZ5Y10uLGpsR",
+    "items": [
+      {
+        "productId": "673prod111111111111111",
+        "quantity": 1
+      }
+    ]
+  }
+}
+\`\`\`
+
+**Khi event này được publish:**
+1. **Products service** giảm quantity của từng product
+2. **Cart service** xóa purchased items khỏi cart
+3. **Orders service** update order status = \`Complete\`
+
+---
+
+## 🔄 Luồng hoạt động (Flows)
+
+### Flow 1: User mua hàng thành công (Happy Path)
+
+\`\`\`
+┌──────────┐
+│  User    │
+│ (Browser)│
+└────┬─────┘
+     │
+     │ 1. Add sản phẩm vào cart
+     │    POST /api/cart/items { productId, quantity }
      ▼
-┌─────────────────────────────────────────────────┐
-│ Orders Service                                  │
-│                                                 │
-│ 1. Check if product exists locally              │
-│ 2. Check if product.orderId is null (available) │
-│ 3. Create order (status: created)               │
-│ 4. Set expiredAt = now + 15 minutes            │
-│ 5. Save to DB                                   │
-└────┬────────────────────────────────────────────┘
-     │ Publish: order:created
+┌────────────────┐
+│  Cart Service  │
+│                │
+│ - Save to DB   │
+│ - Return cart  │
+└────────────────┘
+     │
+     │ 2. User checkout
+     │    POST /api/orders { items: [...] }
      ▼
-┌──────────────────────────────────────────────────┐
-│ NATS Streaming Server                            │
-└────┬────────────────────┬────────────────────────┘
-     │                    │
-     ▼                    ▼
-┌────────────────┐   ┌─────────────────────────────┐
-│ Products       │   │ Expiration Service          │
-│ Service        │   │                             │
-│                │   │ 1. Calculate delay:         │
-│ 1. Find product│   │    expireAt - now = 15min │
-│ 2. Set orderId │   │ 2. Add job to Bull Queue    │
-│ 3. Save & ack  │   │    with delay: 900000ms     │
-└────────────────┘   │ 3. msg.ack()                │
-                     └─────────────────────────────┘
-                                  │
-                                  │ Store job in Redis
-                                  ▼
-                            ┌──────────────┐
-                            │    Redis     │
-                            │ Bull Queue   │
-                            │              │
-                            │ ⏰ Waiting   │
-                            │  15 minutes  │
-                            └──────────────┘
-                                  │
-     ┌────────────────────────────┘
-     │ Meanwhile...
-     │ User completes payment (future feature)
+┌────────────────────────────────────────┐
+│  Orders Service                        │
+│                                        │
+│ - Tạo order với status: Created       │
+│ - Snapshot title/price của products   │
+│ - Tính total                           │
+│ - KHÔNG lock sản phẩm ❌               │
+│ - KHÔNG set expiredAt ❌               │
+│ - Save to DB                           │
+└────┬───────────────────────────────────┘
+     │
+     │ Publish: OrderCreated
+     ▼
+┌──────────────┐
+│  NATS Bus    │
+└────┬─────────┘
+     │
+     │ Broadcast
+     ▼
+┌─────────────────────┐
+│ Payments Service    │
+│                     │
+│ - Replicate order   │
+│   to local DB       │
+│ - msg.ack()         │
+└─────────────────────┘
+     │
+     │ 3. User nhập thẻ và thanh toán
+     │    POST /api/payments { token, orderId }
+     ▼
+┌───────────────────────────────────────────┐
+│  Payments Service                         │
+│                                           │
+│ - Verify order exists & status = Created │
+│ - Verify user ownership                   │
+│ - Call Stripe API (charges.create)       │
+│ - Save payment record                     │
+│ - Publish: PaymentCreated (with items)   │
+└────┬──────────────────────────────────────┘
+     │
+     │ Publish: PaymentCreated
+     ▼
+┌──────────────┐
+│  NATS Bus    │
+└────┬─────────┘
+     │
+     │ Broadcast đến 3 consumers
+     │
+     ├──────────────────────┐
+     │                      │
+     ▼                      ▼
+┌──────────────┐   ┌────────────────┐
+│ Products Svc │   │   Cart Svc     │
+│              │   │                │
+│ - Tìm product│   │ - Tìm cart     │
+│ - Giảm qty   │   │ - Xóa items    │
+│ - Save       │   │   đã mua       │
+│ - msg.ack()  │   │ - Save         │
+└──────────────┘   │ - msg.ack()    │
+                   └────────────────┘
      │
      ▼
-┌─────────────────┐
-│ Orders Service  │
-│                 │
-│ Update status:  │
-│ complete        │
-└─────────────────┘
-     
-     ⏰ 15 min later (job ignored if order completed)
-```
+┌──────────────┐
+│  Orders Svc  │
+│              │
+│ - Update     │
+│   status =   │
+│   Complete   │
+│ - msg.ack()  │
+└──────────────┘
+
+✅ Hoàn tất: Product quantity giảm, cart cleared, order complete
+\`\`\`
 
 ---
 
-### **Flow 3: Create Order (Expiration Path - User Doesn't Pay)**
+### Flow 2: User cancel order
 
-```
-┌─────────┐
-│  User   │
-└────┬────┘
-     │ POST /api/orders
-     │ (Same as Flow 2 steps 1-5)
-     ▼
-     ... (order created, job scheduled)
-     
-     ⏰ User does NOT pay within 15 minutes
-     
-     ┌──────────────────┐
-     │ Redis Bull Queue │
-     │                  │
-     │ ⏰ 15 min elapsed│
-     │ Process job!     │
-     └────┬─────────────┘
-          │ expirationQueue.process()
-          ▼
-     ┌─────────────────────────────┐
-     │ Expiration Service          │
-     │                             │
-     │ 1. Get orderId from job     │
-     │ 2. Publish expiration event │
-     └────┬────────────────────────┘
-          │ Publish: expiration:complete
-          ▼
-     ┌──────────────┐
-     │ NATS Stream  │
-     └────┬─────────┘
-          │ Broadcast
-          ▼
-     ┌─────────────────────────────────────────┐
-     │ Orders Service                          │
-     │                                         │
-     │ 1. Find order by ID                     │
-     │ 2. Check status (if already complete,   │
-     │    ignore)                               │
-     │ 3. Update status: cancelled             │
-     │ 4. Save to DB                           │
-     │ 5. Publish: order:cancelled             │
-     │ 6. msg.ack()                            │
-     └────┬────────────────────────────────────┘
-          │ Publish: order:cancelled
-          ▼
-     ┌──────────────┐
-     │ NATS Stream  │
-     └────┬─────────┘
-          │ Broadcast
-          ▼
-     ┌─────────────────────────────┐
-     │ Products Service            │
-     │                             │
-     │ 1. Find product by ID       │
-     │ 2. Clear orderId (release)  │
-     │ 3. Save to DB               │
-     │ 4. msg.ack()                │
-     └─────────────────────────────┘
-     
-     ✅ Product is now available for other users
-```
-
----
-
-### **Flow 4: User Cancels Order Manually**
-
-```
-┌─────────┐
-│  User   │
-└────┬────┘
+\`\`\`
+┌──────────┐
+│  User    │
+└────┬─────┘
+     │
      │ DELETE /api/orders/:id
      ▼
-┌─────────────────────────────┐
-│ Orders Service              │
-│                             │
-│ 1. Verify JWT & ownership   │
-│ 2. Find order               │
-│ 3. Update status: cancelled │
-│ 4. Save to DB               │
-└────┬────────────────────────┘
-     │ Publish: order:cancelled
+┌─────────────────────────────────┐
+│  Orders Service                 │
+│                                 │
+│ - Verify ownership              │
+│ - Find order                    │
+│ - Check status = Created        │
+│ - Update status = Cancelled     │
+│ - Save to DB                    │
+└────┬────────────────────────────┘
+     │
+     │ Publish: OrderCancelled
      ▼
 ┌──────────────┐
-│ NATS Stream  │
+│  NATS Bus    │
 └────┬─────────┘
+     │
      │ Broadcast
      ▼
-┌─────────────────────────────┐
-│ Products Service            │
-│                             │
-│ 1. Find product by ID       │
-│ 2. Clear orderId (release)  │
-│ 3. Save to DB               │
-│ 4. msg.ack()                │
-└─────────────────────────────┘
+┌─────────────────────┐
+│ Payments Service    │
+│                     │
+│ - Update local      │
+│   order status      │
+│ - msg.ack()         │
+└─────────────────────┘
 
-Note: Expiration job will still fire after 15 min,
-      but Orders Service will ignore it (already cancelled)
-```
+✅ Order bị hủy, NHƯNG:
+- ❌ Quantity KHÔNG tăng lại (vì chưa bao giờ giảm)
+- ❌ Không có notification (có thể thêm sau)
+\`\`\`
+
+**Lưu ý quan trọng:**
+- Khi cancel order, quantity **KHÔNG được restore** vì nó chưa bao giờ bị giảm
+- Quantity chỉ giảm sau khi payment thành công
 
 ---
 
-### **Flow 5: Product Update Synchronization**
+### Flow 3: Create/Update Product
 
-```
-┌─────────┐
-│  User   │
-└────┬────┘
-     │ PUT /api/products/:id
-     │ { price: 120 }  // Update price
-     ▼
-┌─────────────────────────────┐
-│ Products Service            │
-│                             │
-│ 1. Verify JWT & ownership   │
-│ 2. Check if reserved        │
-│    (orderId !== undefined)  │
-│ 3. If reserved, reject ❌   │
-│ 4. Update product           │
-│ 5. Increment version        │
-│ 6. Save to DB               │
-└────┬────────────────────────┘
-     │ Publish: product:updated
-     ▼
-┌──────────────┐
-│ NATS Stream  │
-└────┬─────────┘
-     │ Broadcast
+\`\`\`
+┌──────────┐
+│  Seller  │
+└────┬─────┘
+     │
+     │ POST /api/products { title, price, quantity }
      ▼
 ┌─────────────────────────────────┐
-│ Orders Service                  │
+│  Products Service               │
 │                                 │
-│ 1. Find local product replica   │
-│ 2. Check version:               │
-│    if event.version =           │
-│       local.version + 1 ✅      │
-│    else reject (out of order) ❌│
-│ 3. Update local copy            │
-│ 4. Save & msg.ack()             │
-└─────────────────────────────────┘
-```
+│ - Validate JWT                  │
+│ - Validate input                │
+│ - Create product với version=0  │
+│ - Save to DB                    │
+└────┬────────────────────────────┘
+     │
+     │ Publish: ProductCreated
+     ▼
+┌──────────────┐
+│  NATS Bus    │
+└──────────────┘
+
+(Hiện tại không có consumer nào listen ProductCreated)
+
+─────────────────────────────────
+
+│ PUT /api/products/:id { price: 899 }
+▼
+┌─────────────────────────────────┐
+│  Products Service               │
+│                                 │
+│ - Verify ownership (userId)     │
+│ - Update fields                 │
+│ - Increment version             │
+│ - Save to DB                    │
+└────┬────────────────────────────┘
+     │
+     │ Publish: ProductUpdated
+     ▼
+┌──────────────┐
+│  NATS Bus    │
+└──────────────┘
+
+✅ Product được update với version mới
+\`\`\`
 
 ---
 
-## �🚀 Getting Started
+## 🚀 Cài đặt local (Minikube + mkcert)
 
 ### Prerequisites
 
-- **Docker Desktop** (with Kubernetes enabled) OR **Minikube**
+- **Minikube** (hoặc Docker Desktop with Kubernetes)
 - **kubectl** CLI
 - **Skaffold** CLI
-- **Node.js 18+** and **npm**
-- **Ingress NGINX Controller** installed in cluster
+- **Node.js 20+** và **npm**
+- **mkcert** - Tạo self-signed certificates
 
-### Local Setup with Minikube
+### Bước 1: Cài đặt tools
 
-1. **Start Minikube cluster:**
-```bash
+\`\`\`bash
+# macOS
+brew install minikube kubectl skaffold mkcert
+
+# hoặc download từ:
+# https://minikube.sigs.k8s.io/
+# https://skaffold.dev/
+# https://github.com/FiloSottile/mkcert
+\`\`\`
+
+---
+
+### Bước 2: Start Minikube cluster
+
+\`\`\`bash
+# Start với 4 CPU, 8GB RAM
 minikube start --cpus=4 --memory=8192
-```
 
-2. **Enable Ingress addon:**
-```bash
+# Enable ingress addon
 minikube addons enable ingress
-```
 
-3. **Start Minikube tunnel** (required for LoadBalancer):
-```bash
+# Verify
+kubectl get nodes
+# NAME       STATUS   ROLES           AGE   VERSION
+# minikube   Ready    control-plane   1m    v1.28.3
+\`\`\`
+
+---
+
+### Bước 3: Start Minikube tunnel
+
+**Quan trọng:** Terminal này phải chạy suốt quá trình dev
+
+\`\`\`bash
 minikube tunnel
-# Keep this terminal open
-```
+# ✅  Tunnel successfully started
+# 📌  Keep this terminal open
+\`\`\`
 
-4. **Add domain to `/etc/hosts`:**
-```bash
-echo "127.0.0.1 ticketing.local" | sudo tee -a /etc/hosts
-```
+---
 
-5. **Generate TLS certificates** (for HTTPS):
-```bash
-cd infra/tls-certs
-# Follow instructions in README.md
-mkcert ticketing.local
-kubectl create secret tls ticketing-tls \
-  --cert=ticketing.local.pem \
-  --key=ticketing.local-key.pem
-```
+### Bước 4: Cấu hình domain & TLS
 
-6. **Create Kubernetes secrets:**
-```bash
-# JWT secret for auth
-kubectl create secret generic jwt-secret --from-literal=JWT_KEY=your-secret-key
+#### 4.1. Tạo TLS certificate với mkcert
 
-# Stripe secret for payments (use your test key)
-kubectl create secret generic stripe-secret --from-literal=STRIPE_SECRET_KEY=sk_test_your_stripe_key
-```
+\`\`\`bash
+# Install root CA (chỉ cần 1 lần)
+mkcert -install
 
-7. **Start development with Skaffold:**
-```bash
+# Generate certificate cho domain
+mkcert ecommerce.local
+
+# Tạo K8s secret
+kubectl create secret tls ecommerce-local-tls \
+  --cert=ecommerce.local.pem \
+  --key=ecommerce.local-key.pem
+
+# Verify
+kubectl get secret ecommerce-local-tls
+\`\`\`
+
+#### 4.2. Thêm domain vào \`/etc/hosts\`
+
+\`\`\`bash
+echo "127.0.0.1 ecommerce.local" | sudo tee -a /etc/hosts
+
+# Verify
+cat /etc/hosts | grep ecommerce
+# 127.0.0.1 ecommerce.local
+\`\`\`
+
+---
+
+### Bước 5: Tạo Kubernetes secrets
+
+#### 5.1. JWT Secret (cho Auth service)
+
+\`\`\`bash
+kubectl create secret generic jwt-secret \
+  --from-literal=JWT_KEY='dev_jwt_secret_key_12345'
+
+# Verify
+kubectl get secret jwt-secret
+\`\`\`
+
+#### 5.2. Stripe Secret (cho Payments service)
+
+**Lấy API keys từ:** https://dashboard.stripe.com/test/apikeys
+
+\`\`\`bash
+kubectl create secret generic stripe-secret \
+  --from-literal=STRIPE_SECRET_KEY='sk_test_YOUR_SECRET_KEY_HERE' \
+  --from-literal=STRIPE_PUBLISHABLE_KEY='pk_test_YOUR_PUBLISHABLE_KEY_HERE'
+
+# Verify
+kubectl get secret stripe-secret
+kubectl describe secret stripe-secret
+\`\`\`
+
+**Lưu ý:**
+- Thay \`sk_test_YOUR_SECRET_KEY_HERE\` và \`pk_test_YOUR_PUBLISHABLE_KEY_HERE\` bằng keys thật từ Stripe Dashboard
+- Dùng **test mode keys**, KHÔNG dùng live keys
+- ⚠️ **KHÔNG commit keys thật vào Git!**
+
+#### 5.3. Mongo credentials secrets
+
+Các secrets này đã được template sẵn trong \`infra/k8s/config/\`:
+- \`mongo-auth-secret\`
+- \`mongo-product-secret\`
+- \`mongo-order-secret\`
+- \`mongo-payment-secret\`
+- \`mongo-cart-secret\`
+
+\`\`\`bash
+# Apply tất cả config
+kubectl apply -f infra/k8s/config/
+\`\`\`
+
+---
+
+### Bước 6: Start development với Skaffold
+
+\`\`\`bash
+# Từ thư mục root của project
 skaffold dev
-```
 
-8. **Access the application:**
-```
-https://ticketing.local
-```
+# Skaffold sẽ:
+# 1. Build Docker images cho tất cả services
+# 2. Push images vào Minikube registry
+# 3. Deploy tất cả K8s manifests
+# 4. Stream logs từ tất cả pods
+# 5. Auto-rebuild khi có code changes
+\`\`\`
 
----
-
-## 💻 Development
-
-### Project Structure
-
-```
-ticketing/
-├── auth/                    # Authentication service
-│   ├── src/
-│   │   ├── routes/         # API routes
-│   │   ├── models/         # Mongoose models
-│   │   ├── services/       # Business logic
-│   │   └── test/           # Test setup
-│   ├── Dockerfile
-│   └── package.json
-├── products/               # Product management service
-│   ├── src/
-│   │   ├── routes/
-│   │   ├── models/
-│   │   ├── events/         # Event publishers
-│   │   └── __mocks__/      # Test mocks
-│   └── ...
-├── orders/                 # Order processing service
-│   ├── src/
-│   │   ├── routes/
-│   │   ├── models/
-│   │   ├── events/
-│   │   │   ├── listeners/  # Event consumers
-│   │   │   └── publishers/
-│   │   └── ...
-│   └── ...
-├── client/                 # Next.js frontend
-│   ├── pages/
-│   ├── components/
-│   ├── hooks/
-│   └── api/
-├── common/                 # Shared NPM package
-│   ├── src/
-│   │   ├── errors/
-│   │   ├── middlewares/
-│   │   └── events/
-│   └── package.json
-├── infra/
-│   ├── k8s/               # Kubernetes manifests
-│   └── tls-certs/         # SSL certificates
-├── nats-test/             # NATS testing utilities
-├── skaffold.yaml
-└── README.md
-```
-
-### Running Tests
-
-Each service has its own test suite:
-
-```bash
-# Auth service tests
-cd auth
-npm test
-
-# Products service tests
-cd products
-npm test
-
-# Orders service tests
-cd orders
-npm test
-```
-
-### Working with Common Library
-
-When updating shared code:
-
-```bash
-cd common
-# Make changes to src/
-npm run pub   # Build, version bump, and publish to npm
-```
-
-Update services:
-
-```bash
-cd auth  # or products, orders, expiration
-npm install @datnxecommerce/common@latest
-```
+**Đợi cho đến khi thấy:**
+\`\`\`
+[client] > Ready on http://0.0.0.0:3000
+[auth] Server listening on port 3000
+[products] Server listening on port 3000
+[orders] Server listening on port 3000
+[payments] Server listening on port 3000
+[cart] Server listening on port 3000
+\`\`\`
 
 ---
 
-## 🧪 Testing with Postman
+### Bước 7: Access application
 
-### Setup Postman Environment
+\`\`\`bash
+# Open browser
+open https://ecommerce.local
 
-1. **Create New Environment** in Postman
-2. **Add Variables:**
-   - `baseUrl` = `https://ticketing.local`
-   - `authToken` = (will be set automatically)
+# hoặc
+curl -k https://ecommerce.local
+\`\`\`
 
-### Test Flow: Complete User Journey
+**Nếu browser warning về certificate:**
+- Click "Advanced" → "Proceed to ecommerce.local"
+- Lý do: Self-signed cert từ mkcert
 
-#### **1. User Signup**
+---
 
-**Request:**
-```http
+### Verify deployment
+
+\`\`\`bash
+# Check pods
+kubectl get pods
+# NAME                          READY   STATUS    RESTARTS   AGE
+# auth-depl-xxx                 1/1     Running   0          2m
+# cart-depl-xxx                 1/1     Running   0          2m
+# client-depl-xxx               1/1     Running   0          2m
+# nats-depl-xxx                 1/1     Running   0          2m
+# order-depl-xxx                1/1     Running   0          2m
+# payment-depl-xxx              1/1     Running   0          2m
+# product-depl-xxx              1/1     Running   0          2m
+# ...mongo pods...
+
+# Check services
+kubectl get svc
+# NAME                  TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)
+# auth-svc              ClusterIP   10.96.x.x        <none>        3000/TCP
+# cart-svc              ClusterIP   10.96.x.x        <none>        3000/TCP
+# client-svc            ClusterIP   10.96.x.x        <none>        3000/TCP
+# nats-svc              ClusterIP   10.96.x.x        <none>        4222/TCP,8222/TCP
+# ...
+
+# Check ingress
+kubectl get ingress
+# NAME              CLASS   HOSTS              ADDRESS        PORTS
+# ingress-service   nginx   ecommerce.local    192.168.49.2   80, 443
+\`\`\`
+
+---
+
+## ☸️ Kubernetes Infrastructure
+
+### Ingress Configuration
+
+**File:** \`infra/k8s/ingress/ingress.yaml\`
+
+\`\`\`yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-service
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  tls:
+    - hosts:
+        - ecommerce.local
+      secretName: ecommerce-local-tls
+  ingressClassName: nginx
+  rules:
+  - host: ecommerce.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: client-svc
+            port:
+              number: 3000
+      - path: /api/users
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 3000
+      - path: /api/products
+        pathType: Prefix
+        backend:
+          service:
+            name: product-svc
+            port:
+              number: 3000
+      - path: /api/cart
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-svc
+            port:
+              number: 3000
+      - path: /api/orders
+        pathType: Prefix
+        backend:
+          service:
+            name: order-svc
+            port:
+              number: 3000
+      - path: /api/payments
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-svc
+            port:
+              number: 3000
+\`\`\`
+
+**Routes:**
+- \`/\` → Client (Next.js)
+- \`/api/users/*\` → Auth service
+- \`/api/products/*\` → Products service
+- \`/api/cart/*\` → Cart service
+- \`/api/orders/*\` → Orders service
+- \`/api/payments/*\` → Payments service
+
+---
+
+### Service Deployments
+
+Mỗi service có:
+- **Deployment** - Pod replicas (default: 1)
+- **Service** - ClusterIP cho internal communication
+- **MongoDB Deployment + Service** - Dedicated database
+- **ConfigMap** - Mongo host/port
+- **Secret** - Mongo credentials
+
+**Example: Products Deployment**
+
+\`\`\`yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product
+  template:
+    metadata:
+      labels:
+        app: product
+    spec:
+      containers:
+      - name: product
+        image: datnx/product:latest
+        env:
+        - name: JWT_KEY
+          valueFrom:
+            secretKeyRef:
+              name: jwt-secret
+              key: JWT_KEY
+        - name: NATS_URL
+          value: http://nats-svc:4222
+        - name: NATS_CLUSTER_ID
+          value: ticketing
+        - name: NATS_CLIENT_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # ... Mongo env vars
+\`\`\`
+
+---
+
+### Environment Variables per Service
+
+#### Auth Service
+- \`JWT_KEY\` - Secret từ \`jwt-secret\`
+- \`MONGO_HOST\`, \`MONGO_PORT\` - ConfigMap
+- \`MONGO_USERNAME\`, \`MONGO_PASSWORD\` - Secret
+
+#### Products/Orders/Payments/Cart Services
+- \`JWT_KEY\` - Secret từ \`jwt-secret\`
+- \`NATS_URL\` - \`http://nats-svc:4222\`
+- \`NATS_CLUSTER_ID\` - \`ticketing\`
+- \`NATS_CLIENT_ID\` - Pod name (unique)
+- Mongo credentials - ConfigMap + Secret
+
+#### Payments Service (thêm)
+- \`STRIPE_SECRET_KEY\` - Secret từ \`stripe-secret\`
+
+#### Client
+- \`NEXT_PUBLIC_STRIPE_KEY\` - Secret từ \`stripe-secret.STRIPE_PUBLISHABLE_KEY\`
+
+---
+
+## 🧪 Test với Postman
+
+### Import Postman Collection
+
+**File:** \`infra/postman/ecommerce.postman_collection.json\`
+
+1. Mở Postman
+2. File → Import → \`infra/postman/ecommerce.postman_collection.json\`
+3. Tạo Environment:
+   - \`baseUrl\` = \`https://ecommerce.local\`
+
+---
+
+### Test Scenarios
+
+#### Scenario 1: User Registration & Login
+
+**1.1. Signup**
+\`\`\`http
 POST {{baseUrl}}/api/users/signup
 Content-Type: application/json
 
@@ -657,24 +1230,18 @@ Content-Type: application/json
   "email": "test@example.com",
   "password": "password123"
 }
-```
+\`\`\`
 
-**Expected Response:** `201 Created`
-```json
+**Response:** \`201 Created\`
+\`\`\`json
 {
-  "id": "507f1f77bcf86cd799439011",
+  "id": "673abc123def456789012345",
   "email": "test@example.com"
 }
-```
+\`\`\`
 
-**Cookie Set:** `session` (HTTP-only, secure)
-
----
-
-#### **2. User Signin**
-
-**Request:**
-```http
+**1.2. Signin**
+\`\`\`http
 POST {{baseUrl}}/api/users/signin
 Content-Type: application/json
 
@@ -682,631 +1249,524 @@ Content-Type: application/json
   "email": "test@example.com",
   "password": "password123"
 }
-```
+\`\`\`
 
-**Expected Response:** `200 OK`
-```json
+**Response:** \`200 OK\`
+\`\`\`json
 {
-  "id": "507f1f77bcf86cd799439011",
+  "id": "673abc123def456789012345",
   "email": "test@example.com"
 }
-```
+\`\`\`
 
-**⚠️ Important:** Make sure Postman is configured to handle cookies:
-- Settings → General → Enable "Automatically follow redirects"
-- Settings → General → Enable "Send cookies"
+**Cookie được set:** \`session\` (HTTP-only, Secure)
 
----
-
-#### **3. Get Current User**
-
-**Request:**
-```http
+**1.3. Current User**
+\`\`\`http
 GET {{baseUrl}}/api/users/currentuser
-```
+\`\`\`
 
-**Expected Response:** `200 OK`
-```json
+**Response:** \`200 OK\`
+\`\`\`json
 {
   "currentUser": {
-    "id": "507f1f77bcf86cd799439011",
+    "id": "673abc123def456789012345",
     "email": "test@example.com",
     "iat": 1731408000
   }
 }
-```
-
-**If Not Authenticated:** `200 OK`
-```json
-{
-  "currentUser": null
-}
-```
+\`\`\`
 
 ---
 
-#### **4. Create Product (Ticket)**
+#### Scenario 2: Product Management
 
-**Request:**
-```http
+**2.1. Create Product**
+\`\`\`http
 POST {{baseUrl}}/api/products
 Content-Type: application/json
 
 {
-  "title": "Taylor Swift Eras Tour - VIP Ticket",
-  "price": 299.99
+  "title": "iPhone 15 Pro",
+  "price": 999,
+  "quantity": 50
 }
-```
+\`\`\`
 
-**Expected Response:** `201 Created`
-```json
+**Response:** \`201 Created\`
+\`\`\`json
 {
-  "id": "507f191e810c19729de860ea",
-  "title": "Taylor Swift Eras Tour - VIP Ticket",
-  "price": 299.99,
-  "userId": "507f1f77bcf86cd799439011",
+  "id": "673prod123456789012345",
+  "title": "iPhone 15 Pro",
+  "price": 999,
+  "quantity": 50,
+  "userId": "673abc123def456789012345",
   "version": 0
 }
-```
+\`\`\`
 
-**Copy the `id` for next steps!**
+**💡 Save \`id\` vào variable \`productId\`**
 
----
-
-#### **5. List All Products**
-
-**Request:**
-```http
+**2.2. List Products**
+\`\`\`http
 GET {{baseUrl}}/api/products
-```
+\`\`\`
 
-**Expected Response:** `200 OK`
-```json
+**Response:** \`200 OK\`
+\`\`\`json
 [
   {
-    "id": "507f191e810c19729de860ea",
-    "title": "Taylor Swift Eras Tour - VIP Ticket",
-    "price": 299.99,
-    "userId": "507f1f77bcf86cd799439011",
-    "version": 0
+    "id": "673prod123456789012345",
+    "title": "iPhone 15 Pro",
+    "price": 999,
+    "quantity": 50,
+    ...
   }
 ]
-```
+\`\`\`
 
----
+**2.3. Get Product**
+\`\`\`http
+GET {{baseUrl}}/api/products/{{productId}}
+\`\`\`
 
-#### **6. Get Product by ID**
-
-**Request:**
-```http
-GET {{baseUrl}}/api/products/507f191e810c19729de860ea
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "id": "507f191e810c19729de860ea",
-  "title": "Taylor Swift Eras Tour - VIP Ticket",
-  "price": 299.99,
-  "userId": "507f1f77bcf86cd799439011",
-  "orderId": undefined,
-  "version": 0
-}
-```
-
----
-
-#### **7. Update Product**
-
-**Request:**
-```http
-PUT {{baseUrl}}/api/products/507f191e810c19729de860ea
+**2.4. Update Product**
+\`\`\`http
+PUT {{baseUrl}}/api/products/{{productId}}
 Content-Type: application/json
 
 {
-  "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-  "price": 499.99
+  "price": 899
 }
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "id": "507f191e810c19729de860ea",
-  "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-  "price": 499.99,
-  "userId": "507f1f77bcf86cd799439011",
-  "version": 1
-}
-```
-
-**❌ Error if product is reserved:**
-```json
-{
-  "errors": [
-    {
-      "message": "Cannot edit a reserved product"
-    }
-  ]
-}
-```
+\`\`\`
 
 ---
 
-#### **8. Create Order**
+#### Scenario 3: Shopping Cart
 
-**Request:**
-```http
+**3.1. Add Item to Cart**
+\`\`\`http
+POST {{baseUrl}}/api/cart/items
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 2
+}
+\`\`\`
+
+**Response:** \`200 OK\`
+\`\`\`json
+{
+  "id": "673cart123456789012345",
+  "userId": "673abc123def456789012345",
+  "items": [
+    {
+      "productId": "673prod123456789012345",
+      "quantity": 2
+    }
+  ]
+}
+\`\`\`
+
+**3.2. Get Cart**
+\`\`\`http
+GET {{baseUrl}}/api/cart
+\`\`\`
+
+---
+
+#### Scenario 4: Order & Payment (Complete Flow)
+
+**4.1. Create Order**
+\`\`\`http
 POST {{baseUrl}}/api/orders
 Content-Type: application/json
 
 {
-  "productId": "507f191e810c19729de860ea"
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "quantity": 1
+    }
+  ]
 }
-```
+\`\`\`
 
-**Expected Response:** `201 Created`
-```json
+**Response:** \`201 Created\`
+\`\`\`json
 {
-  "id": "608f191e810c19729de860eb",
-  "userId": "507f1f77bcf86cd799439011",
-  "status": "created",
-  "expiredAt": "2025-11-12T10:15:00.000Z",
-  "product": {
-    "id": "507f191e810c19729de860ea",
-    "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-    "price": 499.99
-  },
+  "id": "673order123456789012345",
+  "userId": "673abc123def456789012345",
+  "status": "Created",
+  "items": [
+    {
+      "productId": "673prod123456789012345",
+      "titleSnapshot": "iPhone 15 Pro",
+      "priceSnapshot": 999,
+      "quantity": 1
+    }
+  ],
+  "total": 999,
   "version": 0
 }
-```
+\`\`\`
 
-**⚠️ Copy `expiredAt` - you have 15 minutes to complete payment!**
+**💡 Save \`id\` vào variable \`orderId\`**
 
-**What Happens Behind the Scenes:**
-1. ✅ Order created in Orders Service
-2. ✅ `order:created` event published to NATS
-3. ✅ Products Service locks product (sets `orderId`)
-4. ✅ Expiration Service schedules job in Redis (15 min delay)
+**4.2. Get Order**
+\`\`\`http
+GET {{baseUrl}}/api/orders/{{orderId}}
+\`\`\`
 
----
-
-#### **9. Verify Product is Reserved**
-
-**Request:**
-```http
-GET {{baseUrl}}/api/products/507f191e810c19729de860ea
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "id": "507f191e810c19729de860ea",
-  "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-  "price": 499.99,
-  "userId": "507f1f77bcf86cd799439011",
-  "orderId": "608f191e810c19729de860eb",  // ⚠️ Now reserved!
-  "version": 1
-}
-```
-
----
-
-#### **10. Try to Create Duplicate Order (Should Fail)**
-
-**Request:**
-```http
-POST {{baseUrl}}/api/orders
+**4.3. Payment**
+\`\`\`http
+POST {{baseUrl}}/api/payments
 Content-Type: application/json
 
 {
-  "productId": "507f191e810c19729de860ea"
+  "token": "tok_visa",
+  "orderId": "{{orderId}}"
 }
-```
+\`\`\`
 
-**Expected Response:** `400 Bad Request`
-```json
+**Token:** \`tok_visa\` là Stripe test token (works in test mode)
+
+**Response:** \`201 Created\`
+\`\`\`json
+{
+  "id": "673pay123456789012345",
+  "orderId": "673order123456789012345",
+  "stripeId": "ch_3STDSfRRsPUjHZ5Y10uLGpsR"
+}
+\`\`\`
+
+**4.4. Verify Order Completed**
+\`\`\`http
+GET {{baseUrl}}/api/orders/{{orderId}}
+\`\`\`
+
+**Response:** \`status\` = \`"Complete"\`
+
+**4.5. Verify Product Quantity Decreased**
+\`\`\`http
+GET {{baseUrl}}/api/products/{{productId}}
+\`\`\`
+
+**Response:** \`quantity\` giảm từ \`50\` → \`49\`
+
+**4.6. Verify Cart Cleared**
+\`\`\`http
+GET {{baseUrl}}/api/cart
+\`\`\`
+
+**Response:** \`items\` = \`[]\` (empty)
+
+---
+
+#### Scenario 5: Cancel Order
+
+**5.1. Create Order (lặp lại step 4.1)**
+
+**5.2. Cancel Order**
+\`\`\`http
+DELETE {{baseUrl}}/api/orders/{{orderId}}
+\`\`\`
+
+**Response:** \`204 No Content\`
+
+**5.3. Verify Order Cancelled**
+\`\`\`http
+GET {{baseUrl}}/api/orders/{{orderId}}
+\`\`\`
+
+**Response:** \`status\` = \`"Cancelled"\`
+
+**5.4. Verify Product Quantity KHÔNG thay đổi**
+\`\`\`http
+GET {{baseUrl}}/api/products/{{productId}}
+\`\`\`
+
+**Response:** \`quantity\` vẫn như cũ (vì chưa payment nên chưa giảm)
+
+---
+
+### Error Responses
+
+#### 401 Unauthorized
+\`\`\`json
 {
   "errors": [
-    {
-      "message": "Product is already reserved"
-    }
+    { "message": "Not authorized" }
   ]
 }
-```
+\`\`\`
 
----
+**Fix:** Signup/Signin để có session cookie
 
-#### **11. List User's Orders**
-
-**Request:**
-```http
-GET {{baseUrl}}/api/orders
-```
-
-**Expected Response:** `200 OK`
-```json
-[
-  {
-    "id": "608f191e810c19729de860eb",
-    "userId": "507f1f77bcf86cd799439011",
-    "status": "created",
-    "expiredAt": "2025-11-12T10:15:00.000Z",
-    "product": {
-      "id": "507f191e810c19729de860ea",
-      "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-      "price": 499.99
-    },
-    "version": 0
-  }
-]
-```
-
----
-
-#### **12. Get Order Details**
-
-**Request:**
-```http
-GET {{baseUrl}}/api/orders/608f191e810c19729de860eb
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "id": "608f191e810c19729de860eb",
-  "userId": "507f1f77bcf86cd799439011",
-  "status": "created",
-  "expiredAt": "2025-11-12T10:15:00.000Z",
-  "product": {
-    "id": "507f191e810c19729de860ea",
-    "title": "Taylor Swift Eras Tour - VIP + Meet & Greet",
-    "price": 499.99
-  },
-  "version": 0
-}
-```
-
----
-
-#### **13. Cancel Order (Option A: Manual)**
-
-**Request:**
-```http
-DELETE {{baseUrl}}/api/orders/608f191e810c19729de860eb
-```
-
-**Expected Response:** `204 No Content`
-
-**What Happens:**
-1. ✅ Order status updated to `cancelled`
-2. ✅ `order:cancelled` event published
-3. ✅ Products Service releases product (clears `orderId`)
-4. ✅ Product available for others to purchase
-
----
-
-#### **14. Wait for Expiration (Option B: Automatic)**
-
-**Don't cancel manually - wait 15 minutes**
-
-After `expireAt` timestamp:
-
-1. ✅ Redis Bull job executes
-2. ✅ Expiration Service publishes `expiration:complete`
-3. ✅ Orders Service receives event
-4. ✅ Order status updated to `cancelled`
-5. ✅ `order:cancelled` event published
-6. ✅ Product released
-
-**Verify with:**
-```http
-GET {{baseUrl}}/api/orders/608f191e810c19729de860eb
-```
-
-**Expected Response:**
-```json
-{
-  "id": "608f191e810c19729de860eb",
-  "status": "cancelled",  // ⚠️ Changed!
-  ...
-}
-```
-
----
-
-#### **15. Verify Product Released**
-
-**Request:**
-```http
-GET {{baseUrl}}/api/products/507f191e810c19729de860ea
-```
-
-**Expected Response:**
-```json
-{
-  "id": "507f191e810c19729de860ea",
-  "orderId": undefined,  // ✅ Released!
-  "version": 2
-}
-```
-
----
-
-#### **16. Signout**
-
-**Request:**
-```http
-POST {{baseUrl}}/api/users/signout
-```
-
-**Expected Response:** `200 OK`
-```json
-{}
-```
-
-**Cookie Cleared:** `session` cookie removed
-
----
-
-### Common Error Responses
-
-#### **401 Unauthorized** (Not authenticated)
-```json
-{
-  "errors": [
-    {
-      "message": "Not authorized"
-    }
-  ]
-}
-```
-
-#### **400 Bad Request** (Validation failed)
-```json
+#### 400 Bad Request
+\`\`\`json
 {
   "errors": [
     {
       "message": "Email must be valid",
       "field": "email"
-    },
-    {
-      "message": "Password must be between 4 and 20 characters",
-      "field": "password"
     }
   ]
 }
-```
+\`\`\`
 
-#### **404 Not Found**
-```json
+#### 404 Not Found
+\`\`\`json
 {
   "errors": [
-    {
-      "message": "Not Found"
-    }
+    { "message": "Not Found" }
   ]
 }
-```
+\`\`\`
 
 ---
 
-### Testing Tips
+## 🐛 Troubleshooting
 
-1. **Enable Cookie Jar**: Postman → Settings → Cookies → Enable cookies
-2. **HTTPS Certificate**: Accept self-signed certificate warnings
-3. **Test Expiration**: 
-   - For faster testing, modify `expiredAt` calculation in Orders Service
-   - Change `15 * 60 * 1000` to `60 * 1000` (1 minute)
-4. **Monitor Events**: 
-   ```bash
-   kubectl logs -f deployment/nats-depl
-   ```
-5. **Check Redis Queue**:
-   ```bash
-   kubectl exec -it deployment/expiration-depl -- redis-cli
-   > KEYS bull:order:expiration:*
-   ```
+### 1. Stripe Publishable Key không work
 
----
+**Triệu chứng:**
+- Stripe Elements hiển thị error "Invalid API key"
+- Console log: \`401 Unauthorized\` từ \`api.stripe.com\`
 
-## 🐳 Deployment
+**Debug steps:**
 
-### Kubernetes Resources
+\`\`\`bash
+# 1. Check env trong client pod
+kubectl exec -it $(kubectl get pods -l app=client -o jsonpath='{.items[0].metadata.name}') -- printenv | grep STRIPE
+# Output: NEXT_PUBLIC_STRIPE_KEY=pk_test_xxx
 
-Each service deploys with:
-- **Deployment** - Pod replicas (1 for dev, scale in prod)
-- **Service** - Internal ClusterIP
-- **MongoDB Deployment + Service** - Dedicated database per service (auth, products, orders)
-- **Redis Deployment + Service** - For Expiration service job queue
-- **NATS Deployment + Service** - Event streaming server
+# 2. Verify secret exists
+kubectl get secret stripe-secret
+kubectl describe secret stripe-secret
 
-**Environment Variables** (configured via ConfigMaps/Secrets):
+# 3. Check secret value
+kubectl get secret stripe-secret -o jsonpath='{.data.STRIPE_PUBLISHABLE_KEY}' | base64 -d
+\`\`\`
 
-**Auth Service:**
-- `JWT_KEY` - JWT signing secret (from Secret)
-- `MONGO_URI` - `mongodb://auth-mongo-srv:27017/auth`
+**Fix:**
+\`\`\`bash
+# Delete và recreate secret với key đúng
+kubectl delete secret stripe-secret
 
-**Products Service:**
-- `MONGO_URI` - `mongodb://product-mongo-srv:27017/products`
-- `NATS_URL` - `http://nats-srv:4222`
-- `NATS_CLUSTER_ID` - `ticketing`
-- `NATS_CLIENT_ID` - Auto-generated from pod name
+kubectl create secret generic stripe-secret \
+  --from-literal=STRIPE_SECRET_KEY='sk_test_xxx' \
+  --from-literal=STRIPE_PUBLISHABLE_KEY='pk_test_xxx'
 
-**Orders Service:**
-- `MONGO_URI` - `mongodb://order-mongo-srv:27017/orders`
-- `NATS_URL` - `http://nats-srv:4222`
-- `NATS_CLUSTER_ID` - `ticketing`
-- `NATS_CLIENT_ID` - Auto-generated from pod name
-
-**Expiration Service:**
-- `REDIS_HOST` - `redis-srv`
-- `NATS_URL` - `http://nats-srv:4222`
-- `NATS_CLUSTER_ID` - `ticketing`
-- `NATS_CLIENT_ID` - Auto-generated from pod name
-
-**Payments Service:**
-- `MONGO_URI` - `mongodb://payment-mongo-srv:27017/payments`
-- `NATS_URL` - `http://nats-srv:4222`
-- `NATS_CLUSTER_ID` - `ticketing`
-- `NATS_CLIENT_ID` - Auto-generated from pod name
-- `STRIPE_SECRET_KEY` - Stripe API key (from Secret) - test mode: `sk_test_...`
-
-**Client:**
-- No environment variables (connects via Ingress)
-
-### Building for Production
-
-```bash
-# Build all images
-docker build -t yourregistry/auth:latest ./auth
-docker build -t yourregistry/products:latest ./products
-docker build -t yourregistry/orders:latest ./orders
-docker build -t yourregistry/expiration:latest ./expiration
-docker build -t yourregistry/client:latest ./client
-
-# Push to registry
-docker push yourregistry/auth:latest
-docker push yourregistry/products:latest
-docker push yourregistry/orders:latest
-docker push yourregistry/expiration:latest
-docker push yourregistry/client:latest
-
-# Apply manifests
-kubectl apply -f infra/k8s/
-```
+# Restart client pod
+kubectl delete pod -l app=client
+\`\`\`
 
 ---
 
----
+### 2. CORS/Cookie issues
 
-## 🧪 Testing
+**Triệu chứng:**
+- Login thành công nhưng \`currentuser\` trả về \`null\`
+- Cookie không được set
 
-### Test Strategy
-
-- **Unit Tests** - Individual functions and methods
-- **Integration Tests** - API routes with in-memory MongoDB
-- **Event Tests** - Publisher/Listener behavior with mocked NATS
-
-### Test Coverage
-
-```bash
-# Run all tests with coverage
-npm test -- --coverage
-```
-
-**Key Testing Patterns:**
-- MongoDB Memory Server for isolated DB tests
-- Mocked NATS wrapper to avoid external dependencies
-- Global `signin()` helper for authenticated requests
-- Supertest for HTTP assertions
+**Fix:**
+- Ensure access via \`https://ecommerce.local\` (NOT \`localhost\`)
+- Verify \`/etc/hosts\` có entry đúng
+- Check browser DevTools → Application → Cookies
 
 ---
 
-## 🔐 Security Features
+### 3. NATS connection errors
 
-- ✅ **JWT Authentication** - Stateless tokens in HTTP-only cookies
-- ✅ **Password Hashing** - Scrypt with random salts
-- ✅ **HTTPS/TLS** - All traffic encrypted
-- ✅ **CORS Protection** - Cookie-based auth prevents CSRF
-- ✅ **Input Validation** - Express-validator on all routes
-- ✅ **Error Sanitization** - No stack traces in production
-- ✅ **Ownership Checks** - Users can only modify their own resources
+**Triệu chứng:**
+\`\`\`
+Error: Could not connect to NATS server
+\`\`\`
 
----
+**Debug:**
+\`\`\`bash
+# Check NATS pod
+kubectl get pods -l app=nats
+kubectl logs -l app=nats
 
-## 🎨 Future Enhancements
-
-### Completed Services ✅
-
-- [x] **Auth Service** - JWT authentication with HTTP-only cookies
-- [x] **Products Service** - Product CRUD with event publishing
-- [x] **Orders Service** - Order management with reservation logic
-- [x] **Expiration Service** - Auto-cancel orders after 15 minutes using Redis Bull
-- [x] **Payments Service** - Stripe Charges API integration (test mode)
-- [x] **Client** - Next.js SSR with Bootstrap UI
-
-### Infrastructure Improvements
-
-- [ ] **OpenTelemetry Tracing** - Distributed tracing with Tempo/Jaeger
-- [ ] **Centralized Logging** - ELK/Loki stack
-- [ ] **Metrics & Monitoring** - Prometheus + Grafana dashboards
-- [ ] **API Rate Limiting** - Redis-backed throttling middleware
-- [ ] **Service Mesh** - Istio for advanced traffic management
-- [ ] **CI/CD Pipeline** - GitHub Actions + ArgoCD for GitOps
-- [ ] **Horizontal Pod Autoscaling** - Based on CPU/Memory metrics
-- [ ] **Database Backups** - Automated MongoDB backup to S3
-
-### Features
-
-- [ ] **Product Categories** - Filter tickets by event type (concert, sports, theater)
-- [ ] **Search & Filtering** - Full-text search with Elasticsearch
-- [ ] **User Profiles** - Order history, saved preferences
-- [ ] **Admin Dashboard** - Manage users, products, and orders
-- [ ] **Email Notifications** - Order confirmation, expiration warnings
-- [ ] **Webhook Support** - Third-party integrations
-- [ ] **Multi-Currency Support** - International pricing
-- [ ] **Reviews & Ratings** - User feedback system
+# Check NATS service
+kubectl get svc nats-svc
+# Ensure port 4222 is exposed
+\`\`\`
 
 ---
 
-## 📚 Learning Resources
+### 4. MongoDB connection refused
 
-This project demonstrates concepts from:
+**Triệu chứng:**
+\`\`\`
+MongooseServerSelectionError: connect ECONNREFUSED
+\`\`\`
 
-- **Microservices Patterns** by Chris Richardson
-- **Building Microservices** by Sam Newman
-- **Kubernetes in Action** by Marko Lukša
-- Stephen Grider's Microservices course
+**Debug:**
+\`\`\`bash
+# Check mongo pods
+kubectl get pods | grep mongo
+
+# Check service
+kubectl get svc | grep mongo
+
+# Check init container logs
+kubectl logs <pod-name> -c wait-for-mongo
+\`\`\`
+
+**Fix:**
+\`\`\`bash
+# Restart deployment
+kubectl rollout restart deployment product-depl
+\`\`\`
 
 ---
 
-## 🤝 Contributing
+### 5. Skaffold build fails
 
-Contributions are welcome! Please follow these steps:
+**Triệu chứng:**
+\`\`\`
+Build failed: exit code 1
+\`\`\`
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+**Fix:**
+\`\`\`bash
+# Clear Docker cache
+docker system prune -a
+
+# Rebuild manually
+cd auth
+docker build -t datnx/auth:latest .
+
+# Re-run skaffold
+skaffold dev
+\`\`\`
+
+---
+
+### 6. Port already in use (Minikube tunnel)
+
+**Triệu chứng:**
+\`\`\`
+Error starting tunnel: port 80 already in use
+\`\`\`
+
+**Fix:**
+\`\`\`bash
+# Find process using port
+sudo lsof -i :80
+
+# Kill process
+sudo kill -9 <PID>
+
+# Restart tunnel
+minikube tunnel
+\`\`\`
+
+---
+
+### 7. Check logs
+
+\`\`\`bash
+# All pods
+kubectl get pods
+
+# Specific service logs
+kubectl logs -f deployment/product-depl
+kubectl logs -f deployment/client-depl
+
+# Previous crash logs
+kubectl logs <pod-name> --previous
+
+# All containers in pod
+kubectl logs <pod-name> --all-containers
+\`\`\`
+
+---
+
+## 💻 Tech Stack
+
+### Backend Services
+
+| Tech | Version | Purpose |
+|------|---------|---------|
+| Node.js | 20+ | Runtime |
+| TypeScript | 5.0+ | Language |
+| Express.js | 5.0 | Web framework |
+| Mongoose | 8.0+ | MongoDB ODM |
+| JWT | - | Authentication |
+| Express-validator | - | Input validation |
+| Jest | - | Testing |
+| Supertest | - | API testing |
+
+### Frontend
+
+| Tech | Version | Purpose |
+|------|---------|---------|
+| Next.js | 16.0 | React framework |
+| React | 19.0 | UI library |
+| Bootstrap | 5.3 | CSS framework |
+| Axios | - | HTTP client |
+| @stripe/stripe-js | 8.0+ | Stripe SDK |
+| @stripe/react-stripe-js | 5.0+ | Stripe React components |
+
+### Infrastructure
+
+| Tech | Version | Purpose |
+|------|---------|---------|
+| Kubernetes | 1.28+ | Container orchestration |
+| Minikube | Latest | Local K8s cluster |
+| Docker | 24+ | Containerization |
+| Skaffold | 2.0+ | Dev workflow |
+| NATS Streaming | 0.17.0 | Event bus |
+| MongoDB | 6.0+ | Database |
+| NGINX Ingress | Latest | Load balancer |
+| mkcert | Latest | Local TLS certificates |
+
+### External Services
+
+| Service | Purpose |
+|---------|---------|
+| Stripe | Payment processing (test mode) |
+
+---
+
+## 📚 Resources
+
+- [NATS.io Documentation](https://docs.nats.io/)
+- [Kubernetes Docs](https://kubernetes.io/docs/)
+- [Next.js Docs](https://nextjs.org/docs)
+- [Stripe API Docs](https://stripe.com/docs/api)
+- [Skaffold Docs](https://skaffold.dev/docs/)
+
+---
+
+## 👨‍💻 Author
+
+**DatNX**
+- GitHub: [@Rayloveyou](https://github.com/Rayloveyou)
+- NPM Org: [@datnxecommerce](https://www.npmjs.com/org/datnxecommerce)
 
 ---
 
 ## 📝 License
 
-This project is licensed under the ISC License.
-
----
-
-## 👤 Author
-
-**DatNX**
-- GitHub: [@Rayloveyou](https://github.com/Rayloveyou)
-- NPM Organization: [@datnxtickets](https://www.npmjs.com/org/datnxtickets)
+ISC License - Free to use and modify
 
 ---
 
 ## 🙏 Acknowledgments
 
-- NATS.io community for excellent messaging platform
-- Kubernetes community for comprehensive documentation
-- MongoDB team for developer-friendly database
-- Next.js team for amazing SSR framework
+- Stephen Grider's Microservices course
+- NATS.io community
+- Kubernetes community
+- Next.js team
 
 ---
 
-**⭐ If you find this project helpful, please give it a star!**
+**⭐ Nếu project hữu ích, hãy cho 1 star nhé!**
 
----
-
-## 📞 Support
-
-For issues, questions, or suggestions:
-- Open an issue on GitHub
-- Check existing issues for solutions
-- Review the documentation in each service's README
-
----
-
-**Happy Coding! 🚀**
+**🚀 Happy Coding!**
