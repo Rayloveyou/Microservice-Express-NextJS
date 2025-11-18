@@ -44,8 +44,15 @@ export abstract class Consumer<T extends Event> {
    */
   protected kafkaConsumer: KafkaJsConsumer
 
-  constructor(consumer: KafkaJsConsumer) {
+  /**
+   * Nếu true: consumer group mới sẽ đọc toàn bộ lịch sử topic
+   * Nếu false: chỉ đọc các message mới sau thời điểm subscribe
+   */
+  protected fromBeginning: boolean
+
+  constructor(consumer: KafkaJsConsumer, options?: { fromBeginning?: boolean }) {
     this.kafkaConsumer = consumer
+    this.fromBeginning = options?.fromBeginning ?? false
   }
 
   /**
@@ -62,14 +69,15 @@ export abstract class Consumer<T extends Event> {
     try {
       // Connect consumer
       await this.kafkaConsumer.connect()
-      console.log(`✅ Kafka Consumer connected for topic: ${this.subject}, group: ${this.queueGroupName}`)
+      console.log(`Kafka Consumer connected for topic: ${this.subject}, group: ${this.queueGroupName}`)
 
       // Subscribe to topic
       await this.kafkaConsumer.subscribe({
         topic: this.subject,
-        // Có thể specify từ partition nào bắt đầu đọc
-        // fromBeginning: true = đọc từ đầu topic (chỉ khi consumer group mới)
-        fromBeginning: false
+        // fromBeginning:
+        // - true  => group mới sẽ đọc toàn bộ lịch sử (offset từ 0)
+        // - false => group mới chỉ đọc message mới (tương đương "latest")
+        fromBeginning: this.fromBeginning
       })
 
       // Start consuming messages
@@ -79,7 +87,7 @@ export abstract class Consumer<T extends Event> {
           const { topic, partition, message } = payload
 
           console.log(
-            `📨 Message received: ${this.subject} / ${this.queueGroupName} [partition: ${partition}, offset: ${message.offset}]`
+            `Message received: ${this.subject} / ${this.queueGroupName} [partition: ${partition}, offset: ${message.offset}]`
           )
 
           try {
@@ -93,14 +101,14 @@ export abstract class Consumer<T extends Event> {
             // Nếu onMessage throw error, offset sẽ không commit
             // Message sẽ được retry (nếu có retry logic) hoặc move to DLQ
           } catch (err) {
-            console.error(`❌ Error processing message from topic ${this.subject}:`, err)
+            console.error(`Error processing message from topic ${this.subject}:`, err)
             // Có thể implement retry logic hoặc DLQ ở đây
             throw err // Re-throw để Kafka biết message chưa được process thành công
           }
         }
       })
     } catch (err) {
-      console.error(`❌ Error setting up Kafka consumer for ${this.subject}:`, err)
+      console.error(`Error setting up Kafka consumer for ${this.subject}:`, err)
       throw err
     }
   }
@@ -130,10 +138,9 @@ export abstract class Consumer<T extends Event> {
   async disconnect(): Promise<void> {
     try {
       await this.kafkaConsumer.disconnect()
-      console.log(`✅ Kafka Consumer disconnected for topic: ${this.subject}`)
+      console.log(`Kafka Consumer disconnected for topic: ${this.subject}`)
     } catch (err) {
-      console.error(`❌ Error disconnecting Kafka consumer:`, err)
+      console.error(`Error disconnecting Kafka consumer:`, err)
     }
   }
 }
-
