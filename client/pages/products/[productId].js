@@ -151,7 +151,8 @@ export const getServerSideProps = withCurrentUser(async (context) => {
     const { productId } = context.params
     let product = null
     try {
-        const { data } = await axios.get(`http://product-svc:3000/api/products/${productId}`, {
+        const productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://product-svc:3000'
+        const { data } = await axios.get(`${productServiceUrl}/api/products/${productId}`, {
             headers: { Cookie: context.req.headers.cookie || '' }
         })
         product = data

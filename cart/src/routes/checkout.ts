@@ -54,11 +54,12 @@ router.post('/api/cart/checkout', requireAuth, async (req: Request, res: Respons
 
     // Synchronously create individual orders by calling order service for each item
     // Assumes order service POST /api/orders accepts { productId, quantity }
+    const orderServiceUrl = process.env.ORDER_SERVICE_URL || 'http://order-svc:3000'
     const cookieHeader = req.headers.cookie || ''
     const createdOrders: any[] = []
     for (const item of cart.items) {
         try {
-            const response = await fetch('http://order-svc:3000/api/orders', {
+            const response = await fetch(`${orderServiceUrl}/api/orders`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

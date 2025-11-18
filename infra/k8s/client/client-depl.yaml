@@ -21,6 +21,12 @@ spec:
             secretKeyRef:
               name: stripe-secret
               key: STRIPE_PUBLISHABLE_KEY
+        - name: AUTH_SERVICE_URL
+          value: http://auth-svc:3000
+        - name: PRODUCT_SERVICE_URL
+          value: http://product-svc:3000
+        - name: ORDER_SERVICE_URL
+          value: http://order-svc:3000
         ports:
         - containerPort: 3000
         

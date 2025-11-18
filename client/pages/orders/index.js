@@ -113,7 +113,8 @@ const OrderIndex = ({ orders, currentUser }) => {
 
 export const getServerSideProps = withCurrentUser(async (context) => {
     try {
-        const { data } = await axios.get('http://order-svc:3000/api/orders', {
+        const orderServiceUrl = process.env.ORDER_SERVICE_URL || 'http://order-svc:3000'
+        const { data } = await axios.get(`${orderServiceUrl}/api/orders`, {
             headers: { Cookie: context.req.headers.cookie || '' }
         })
         return { orders: data }

@@ -218,7 +218,8 @@ export const getServerSideProps = withCurrentUser(async (context) => {
     const { orderId } = context.params
     let order = null
     try {
-        const { data } = await axios.get(`http://order-svc:3000/api/orders/${orderId}`, {
+        const orderServiceUrl = process.env.ORDER_SERVICE_URL || 'http://order-svc:3000'
+        const { data } = await axios.get(`${orderServiceUrl}/api/orders/${orderId}`, {
             headers: { Cookie: context.req.headers.cookie || '' }
         })
         order = data

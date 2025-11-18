@@ -77,7 +77,8 @@ export const getServerSideProps = withCurrentUser(async (context) => {
     // Keep cookie header so auth-aware endpoints can work consistently
     let products = []
     try {
-        const { data } = await axios.get('http://product-svc:3000/api/products', {
+        const productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://product-svc:3000'
+        const { data } = await axios.get(`${productServiceUrl}/api/products`, {
             headers: { Cookie: context.req.headers.cookie || '' }
         })
         products = Array.isArray(data) ? data : []

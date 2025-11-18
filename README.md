@@ -1,4 +1,4 @@
-# 🛒 Ticketing Microservices Platform
+# 🛒 Ecommerce Microservices Platform
 
 A **modern e-commerce platform** built on microservices, designed for realistic production scenarios: **Node.js**, **TypeScript**, **Next.js 16**, **MongoDB**, **NATS Streaming**, **Stripe**, **MinIO**, and **Kubernetes** running on **Minikube** with TLS from **mkcert** covering `https://ecommerce.local`, `https://minio.local`, and `https://minio-api.local`.
 
