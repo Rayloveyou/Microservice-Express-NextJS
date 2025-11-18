@@ -1,0 +1,142 @@
+import { Consumer, EachMessagePayload } from 'kafkajs'
+import { Subjects } from './subjects'
+
+// Re-export EachMessagePayload để các services có thể import
+export type { EachMessagePayload }
+
+/**
+ * Base Listener cho Kafka
+ * Tương tự base-listener.ts nhưng dùng Kafka Consumer thay vì NATS Stan
+ * 
+ * Kafka Listener pattern:
+ * - Subscribe to topic (tương đương NATS subject)
+ * - Consumer group: đảm bảo mỗi message chỉ được process 1 lần bởi 1 consumer trong group
+ * - Partition: cho phép parallel processing
+ * - Offset: track vị trí đã đọc trong partition
+ */
+interface Event {
+  subject: Subjects
+  data: any
+}
+
+export abstract class ListenerKafka<T extends Event> {
+  /**
+   * Event subject - sẽ được dùng làm Kafka topic name
+   */
+  abstract subject: T['subject']
+
+  /**
+   * Consumer group name
+   * Tương đương queueGroupName trong NATS
+   * Đảm bảo mỗi message chỉ được process 1 lần bởi 1 consumer trong group
+   */
+  abstract queueGroupName: string
+
+  /**
+   * Handler function khi nhận được message
+   * Implement trong subclass
+   * 
+   * @param data - Parsed event data
+   * @param payload - Full Kafka message payload (có thể dùng để commit offset)
+   */
+  abstract onMessage(data: T['data'], payload: EachMessagePayload): Promise<void>
+
+  /**
+   * Kafka Consumer instance
+   * Mỗi listener sẽ có consumer riêng
+   */
+  protected consumer: Consumer
+
+  constructor(consumer: Consumer) {
+    this.consumer = consumer
+  }
+
+  /**
+   * Subscribe to topic và bắt đầu consume messages
+   * 
+   * Flow:
+   * 1. Connect consumer
+   * 2. Subscribe to topic
+   * 3. Run consumer loop để nhận messages
+   * 4. Parse message và gọi onMessage handler
+   * 5. Commit offset sau khi process xong (trong onMessage)
+   */
+  async listen(): Promise<void> {
+    try {
+      // Connect consumer
+      await this.consumer.connect()
+      console.log(`✅ Kafka Consumer connected for topic: ${this.subject}, group: ${this.queueGroupName}`)
+
+      // Subscribe to topic
+      await this.consumer.subscribe({
+        topic: this.subject,
+        // Có thể specify từ partition nào bắt đầu đọc
+        // fromBeginning: true = đọc từ đầu topic (chỉ khi consumer group mới)
+        fromBeginning: false
+      })
+
+      // Start consuming messages
+      await this.consumer.run({
+        // Process mỗi message
+        eachMessage: async (payload: EachMessagePayload) => {
+          const { topic, partition, message } = payload
+
+          console.log(
+            `📨 Message received: ${this.subject} / ${this.queueGroupName} [partition: ${partition}, offset: ${message.offset}]`
+          )
+
+          try {
+            // Parse message data
+            const data = this.parseMessage(message)
+
+            // Call handler
+            await this.onMessage(data, payload)
+
+            // Note: Offset commit được handle tự động bởi Kafka
+            // Nếu onMessage throw error, offset sẽ không commit
+            // Message sẽ được retry (nếu có retry logic) hoặc move to DLQ
+          } catch (err) {
+            console.error(`❌ Error processing message from topic ${this.subject}:`, err)
+            // Có thể implement retry logic hoặc DLQ ở đây
+            throw err // Re-throw để Kafka biết message chưa được process thành công
+          }
+        }
+      })
+    } catch (err) {
+      console.error(`❌ Error setting up Kafka listener for ${this.subject}:`, err)
+      throw err
+    }
+  }
+
+  /**
+   * Parse message value từ buffer/string thành object
+   * 
+   * @param message - Kafka message object
+   * @returns Parsed event data
+   */
+  parseMessage(message: { value: Buffer | string | null }): T['data'] {
+    if (!message.value) {
+      throw new Error('Message value is null or undefined')
+    }
+
+    const data = typeof message.value === 'string'
+      ? message.value
+      : message.value.toString('utf-8')
+
+    return JSON.parse(data)
+  }
+
+  /**
+   * Disconnect consumer
+   * Gọi khi service shutdown
+   */
+  async disconnect(): Promise<void> {
+    try {
+      await this.consumer.disconnect()
+      console.log(`✅ Kafka Consumer disconnected for topic: ${this.subject}`)
+    } catch (err) {
+      console.error(`❌ Error disconnecting Kafka consumer:`, err)
+    }
+  }
+}
+
