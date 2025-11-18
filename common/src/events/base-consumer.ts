@@ -1,4 +1,4 @@
-import { Consumer, EachMessagePayload } from 'kafkajs'
+import { Consumer as KafkaJsConsumer, EachMessagePayload } from 'kafkajs'
 import { Subjects } from './subjects'
 
 // Re-export EachMessagePayload để các services có thể import
@@ -42,9 +42,9 @@ export abstract class Consumer<T extends Event> {
   /**
    * Kafka Consumer instance
    */
-  protected kafkaConsumer: Consumersumer
+  protected kafkaConsumer: KafkaJsConsumer
 
-  constructor(consumer: Consumer) {
+  constructor(consumer: KafkaJsConsumer) {
     this.kafkaConsumer = consumer
   }
 

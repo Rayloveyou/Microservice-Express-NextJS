@@ -1,4 +1,4 @@
-import { Producer } from 'kafkajs'
+import { Producer as KafkaJsProducer } from 'kafkajs'
 import { Subjects } from './subjects'
 
 /**
@@ -25,9 +25,9 @@ export abstract class Producer<T extends Event> {
    * Kafka Producer instance
    * Dùng để publish messages vào topics
    */
-  protected kafkaProducer: Producer
+  protected kafkaProducer: KafkaJsProducer
 
-  constructor(producer: Producer) {
+  constructor(producer: KafkaJsProducer) {
     this.kafkaProducer = producer
   }
 
