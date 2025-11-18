@@ -24,11 +24,10 @@ export abstract class Consumer<T extends Event> {
   abstract subject: T['subject']
 
   /**
-   * Consumer group name
-   * Tương đương queueGroupName trong NATS
+   * Kafka consumer group id
    * Đảm bảo mỗi message chỉ được process 1 lần bởi 1 consumer trong group
    */
-  abstract queueGroupName: string
+  abstract consumerGroupId: string
 
   /**
    * Handler function khi nhận được message
@@ -69,7 +68,7 @@ export abstract class Consumer<T extends Event> {
     try {
       // Connect consumer
       await this.kafkaConsumer.connect()
-      console.log(`Kafka Consumer connected for topic: ${this.subject}, group: ${this.queueGroupName}`)
+      console.log(`Kafka consumer connected for topic: ${this.subject}, group: ${this.consumerGroupId}`)
 
       // Subscribe to topic
       await this.kafkaConsumer.subscribe({
@@ -87,7 +86,7 @@ export abstract class Consumer<T extends Event> {
           const { topic, partition, message } = payload
 
           console.log(
-            `Message received: ${this.subject} / ${this.queueGroupName} [partition: ${partition}, offset: ${message.offset}]`
+            `Message received: ${this.subject} / ${this.consumerGroupId} [partition: ${partition}, offset: ${message.offset}]`
           )
 
           try {
@@ -138,7 +137,7 @@ export abstract class Consumer<T extends Event> {
   async disconnect(): Promise<void> {
     try {
       await this.kafkaConsumer.disconnect()
-      console.log(`Kafka Consumer disconnected for topic: ${this.subject}`)
+      console.log(`Kafka consumer disconnected for topic: ${this.subject}`)
     } catch (err) {
       console.error(`Error disconnecting Kafka consumer:`, err)
     }
