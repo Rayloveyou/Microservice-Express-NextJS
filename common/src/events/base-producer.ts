@@ -2,10 +2,8 @@ import { Producer } from 'kafkajs'
 import { Subjects } from './subjects'
 
 /**
- * Base Publisher cho Kafka
- * Tương tự base-publisher.ts nhưng dùng Kafka Producer thay vì NATS Stan
- * 
- * Kafka Publisher pattern:
+ * Base Producer cho Kafka
+ * Kafka Producer pattern:
  * - Publish message vào topic (tương đương NATS subject)
  * - Topic name = event subject (ví dụ: 'product:created')
  * - Message key: có thể dùng để partition routing (ví dụ: productId)
@@ -16,7 +14,7 @@ interface Event {
   data: any
 }
 
-export abstract class PublisherKafka<T extends Event> {
+export abstract class Producer<T extends Event> {
   /**
    * Event subject - sẽ được dùng làm Kafka topic name
    * Ví dụ: Subjects.ProductCreated -> topic 'product:created'
@@ -27,10 +25,10 @@ export abstract class PublisherKafka<T extends Event> {
    * Kafka Producer instance
    * Dùng để publish messages vào topics
    */
-  protected producer: Producer
+  protected kafkaProducer: Producer
 
   constructor(producer: Producer) {
-    this.producer = producer
+    this.kafkaProducer = producer
   }
 
   /**
@@ -57,7 +55,7 @@ export abstract class PublisherKafka<T extends Event> {
       }
 
       // Send message to topic
-      await this.producer.send({
+      await this.kafkaProducer.send({
         topic,
         messages: [message]
       })

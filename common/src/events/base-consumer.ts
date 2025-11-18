@@ -5,10 +5,8 @@ import { Subjects } from './subjects'
 export type { EachMessagePayload }
 
 /**
- * Base Listener cho Kafka
- * Tương tự base-listener.ts nhưng dùng Kafka Consumer thay vì NATS Stan
- * 
- * Kafka Listener pattern:
+ * Base Consumer cho Kafka
+ * Kafka Consumer pattern:
  * - Subscribe to topic (tương đương NATS subject)
  * - Consumer group: đảm bảo mỗi message chỉ được process 1 lần bởi 1 consumer trong group
  * - Partition: cho phép parallel processing
@@ -19,7 +17,7 @@ interface Event {
   data: any
 }
 
-export abstract class ListenerKafka<T extends Event> {
+export abstract class Consumer<T extends Event> {
   /**
    * Event subject - sẽ được dùng làm Kafka topic name
    */
@@ -43,12 +41,11 @@ export abstract class ListenerKafka<T extends Event> {
 
   /**
    * Kafka Consumer instance
-   * Mỗi listener sẽ có consumer riêng
    */
-  protected consumer: Consumer
+  protected kafkaConsumer: Consumersumer
 
   constructor(consumer: Consumer) {
-    this.consumer = consumer
+    this.kafkaConsumer = consumer
   }
 
   /**
@@ -64,11 +61,11 @@ export abstract class ListenerKafka<T extends Event> {
   async listen(): Promise<void> {
     try {
       // Connect consumer
-      await this.consumer.connect()
+      await this.kafkaConsumer.connect()
       console.log(`✅ Kafka Consumer connected for topic: ${this.subject}, group: ${this.queueGroupName}`)
 
       // Subscribe to topic
-      await this.consumer.subscribe({
+      await this.kafkaConsumer.subscribe({
         topic: this.subject,
         // Có thể specify từ partition nào bắt đầu đọc
         // fromBeginning: true = đọc từ đầu topic (chỉ khi consumer group mới)
@@ -76,7 +73,7 @@ export abstract class ListenerKafka<T extends Event> {
       })
 
       // Start consuming messages
-      await this.consumer.run({
+      await this.kafkaConsumer.run({
         // Process mỗi message
         eachMessage: async (payload: EachMessagePayload) => {
           const { topic, partition, message } = payload
@@ -103,7 +100,7 @@ export abstract class ListenerKafka<T extends Event> {
         }
       })
     } catch (err) {
-      console.error(`❌ Error setting up Kafka listener for ${this.subject}:`, err)
+      console.error(`❌ Error setting up Kafka consumer for ${this.subject}:`, err)
       throw err
     }
   }
@@ -132,7 +129,7 @@ export abstract class ListenerKafka<T extends Event> {
    */
   async disconnect(): Promise<void> {
     try {
-      await this.consumer.disconnect()
+      await this.kafkaConsumer.disconnect()
       console.log(`✅ Kafka Consumer disconnected for topic: ${this.subject}`)
     } catch (err) {
       console.error(`❌ Error disconnecting Kafka consumer:`, err)

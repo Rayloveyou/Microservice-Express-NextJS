@@ -11,13 +11,9 @@ export * from './middlewares/error-handler'
 export * from './middlewares/require-auth'
 export * from './middlewares/validate-request'
 
-// NATS (legacy - có thể remove sau khi migration hoàn tất)
-export * from './events/base-listener'
-export * from './events/base-publisher'
-
-// Kafka (new event-driven architecture)
-export * from './events/base-listener-kafka'
-export * from './events/base-publisher-kafka'
+// Kafka event-driven architecture
+export * from './events/base-consumer'
+export * from './events/base-producer'
 export * from './kafka-wrapper'
 // Re-export Kafka types
 export type { EachMessagePayload } from 'kafkajs'

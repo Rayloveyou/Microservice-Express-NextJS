@@ -1,6 +1,6 @@
 {
   "name": "@datnxecommerce/common",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",
@@ -21,6 +21,7 @@
     "@types/express-validator": "^2.20.33",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/kafkajs": "^1.8.2",
     "@types/node": "^24.10.0",
     "del-cli": "^7.0.0",
     "typescript": "^5.9.3"
