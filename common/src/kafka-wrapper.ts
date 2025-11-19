@@ -1,4 +1,4 @@
-import { Kafka, KafkaConfig, Producer, Consumer, EachMessagePayload } from 'kafkajs'
+import { Kafka, KafkaConfig, Producer, Consumer, EachMessagePayload, logLevel } from 'kafkajs'
 
 /**
  * Kafka Wrapper - Singleton pattern để quản lý Kafka client connection
@@ -61,6 +61,7 @@ class KafkaWrapper {
       const config: KafkaConfig = {
         clientId,
         brokers,
+        logLevel: logLevel.ERROR,
         // Retry config cho production
         retry: {
           retries: 8,
@@ -84,7 +85,7 @@ class KafkaWrapper {
 
       // Connect producer
       await this._producer.connect()
-      console.log('✅ Kafka Producer connected')
+      console.log('Kafka producer connected')
 
       // Consumer sẽ được tạo riêng trong mỗi listener
       // Vì mỗi service có thể có nhiều consumer groups khác nhau
@@ -127,7 +128,7 @@ class KafkaWrapper {
     try {
       if (this._producer) {
         await this._producer.disconnect()
-        console.log('✅ Kafka Producer disconnected')
+        console.log('Kafka producer disconnected')
       }
       // Consumer disconnect sẽ được handle trong từng listener
     } catch (err) {
@@ -138,4 +139,3 @@ class KafkaWrapper {
 
 // Export singleton instance
 export const kafkaWrapper = new KafkaWrapper()
-

@@ -1,7 +1,7 @@
-import { Subjects } from "./subjects"
+import { Topics } from "./topics"
 
 export interface CartCheckoutEvent {
-    subject: Subjects.CartCheckout
+    topic: Topics.CartCheckout
     data: {
         userId: string
         items: {

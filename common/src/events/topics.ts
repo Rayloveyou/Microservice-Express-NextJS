@@ -1,0 +1,12 @@
+export enum Topics {
+  ProductCreated = 'product.created',
+  ProductUpdated = 'product.updated',
+
+  OrderCreated = 'order.created',
+  OrderCancelled = 'order.cancelled',
+  
+  PaymentCreated = 'payment.created',
+
+  CartCheckout = 'cart.checkout'
+}
+

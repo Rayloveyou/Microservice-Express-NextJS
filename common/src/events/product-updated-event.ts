@@ -1,8 +1,8 @@
-import { Subjects } from "./subjects"
+import { Topics } from "./topics"
 
-//interface to define the structure of the event of type product:updated
+//interface to define the structure of the event of type product.updated
 export interface ProductUpdatedEvent {
-    subject: Subjects.ProductUpdated
+    topic: Topics.ProductUpdated
     data: {
         id: string
         version: number

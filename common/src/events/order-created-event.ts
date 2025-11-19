@@ -1,8 +1,8 @@
-import { Subjects } from "./subjects"
+import { Topics } from "./topics"
 import { OrderStatus } from "./types/order-status"
 
 export interface OrderCreatedEvent {
-    subject: Subjects.OrderCreated
+    topic: Topics.OrderCreated
     data: {
         id: string
         version: number

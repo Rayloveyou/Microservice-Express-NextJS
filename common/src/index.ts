@@ -18,7 +18,7 @@ export * from './kafka-wrapper'
 // Re-export Kafka types
 export type { EachMessagePayload } from 'kafkajs'
 
-export * from './events/subjects'
+export * from './events/topics'
 export * from './events/product-created-event'
 export * from './events/product-updated-event'
 

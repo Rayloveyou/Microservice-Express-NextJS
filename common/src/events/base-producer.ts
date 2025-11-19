@@ -1,25 +1,25 @@
 import { Producer as KafkaJsProducer } from 'kafkajs'
-import { Subjects } from './subjects'
+import { Topics } from './topics'
 
 /**
  * Base Producer cho Kafka
  * Kafka Producer pattern:
  * - Publish message vào topic (tương đương NATS subject)
- * - Topic name = event subject (ví dụ: 'product:created')
+ * - Topic name = event topic (ví dụ: 'product.created')
  * - Message key: có thể dùng để partition routing (ví dụ: productId)
  * - Message value: JSON stringified event data
  */
 interface Event {
-  subject: Subjects
+  topic: Topics
   data: any
 }
 
 export abstract class Producer<T extends Event> {
   /**
-   * Event subject - sẽ được dùng làm Kafka topic name
-   * Ví dụ: Subjects.ProductCreated -> topic 'product:created'
+   * Event topic - sẽ được dùng làm Kafka topic name
+   * Ví dụ: Topics.ProductCreated -> topic 'product.created'
    */
-  abstract subject: T['subject']
+  abstract topic: T['topic']
 
   /**
    * Kafka Producer instance
@@ -40,8 +40,8 @@ export abstract class Producer<T extends Event> {
    */
   async publish(data: T['data'], key?: string): Promise<void> {
     try {
-      // Topic name = event subject
-      const topic = this.subject
+      // Topic name = event topic
+      const topic = this.topic
 
       // Message payload
       const message = {
@@ -60,11 +60,10 @@ export abstract class Producer<T extends Event> {
         messages: [message]
       })
 
-      console.log(`✅ Event published to topic: ${topic}`, key ? `(key: ${key})` : '')
+      console.log(`Event published to topic: ${topic}`, key ? `(key: ${key})` : '')
     } catch (err) {
-      console.error(`❌ Failed to publish event to topic ${this.subject}:`, err)
+      console.error(`Failed to publish event to topic ${this.topic}:`, err)
       throw err
     }
   }
 }
-
