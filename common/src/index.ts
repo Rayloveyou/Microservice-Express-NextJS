@@ -10,6 +10,7 @@ export * from './middlewares/current-user'
 export * from './middlewares/error-handler'
 export * from './middlewares/require-auth'
 export * from './middlewares/validate-request'
+export * from './middlewares/require-admin'
 
 // Kafka event-driven architecture
 export * from './events/base-consumer'
@@ -23,6 +24,7 @@ export * from './events/product-created-event'
 export * from './events/product-updated-event'
 
 export * from './events/types/order-status'
+export * from './events/types/user-role'
 export * from './events/order-created-event'
 export * from './events/order-cancelled-event'
 

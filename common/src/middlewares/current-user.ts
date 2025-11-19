@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express'
 import * as jwt from 'jsonwebtoken'
+import { UserRole } from '../events/types/user-role'
 
 // Define an interface for the payload structure
 interface UserPayload {
-    id: string;
-    email: string;
+    id: string
+    email: string
+    role: UserRole
 }
 
 // Extend Express Request interface to include currentUser property
