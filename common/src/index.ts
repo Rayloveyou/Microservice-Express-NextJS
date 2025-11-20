@@ -11,6 +11,7 @@ export * from './middlewares/error-handler'
 export * from './middlewares/require-auth'
 export * from './middlewares/validate-request'
 export * from './middlewares/require-admin'
+export * from './middlewares/require-not-revoked'
 
 // Kafka event-driven architecture
 export * from './events/base-consumer'
@@ -31,3 +32,6 @@ export * from './events/order-cancelled-event'
 export * from './events/payment-created-event'
 
 export * from './events/cart-checkout-event'
+
+// Redis revocation helpers
+export * from './services/revocation'

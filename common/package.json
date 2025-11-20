@@ -1,6 +1,6 @@
 {
   "name": "@datnxecommerce/common",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",
@@ -31,6 +31,7 @@
     "express": "^5.1.0",
     "express-validator": "^7.3.0",
     "jsonwebtoken": "^9.0.2",
-    "kafkajs": "^2.2.4"
+    "kafkajs": "^2.2.4",
+    "redis": "^4.7.0"
   }
 }
