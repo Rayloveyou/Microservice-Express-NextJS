@@ -2,11 +2,17 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import { app } from './app'
-import { natsWrapper } from './nats-wrapper'
-import { ProductCreatedListener } from './events/listeners/product-created-listener'
-import { ProductUpdatedListener } from './events/listeners/product-updated-listener'
-import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
-import { CartCheckoutListener } from './events/listeners/cart-checkout-listener'
+// Kafka (new event-driven architecture)
+import { kafkaWrapper } from './kafka-wrapper'
+import { PaymentCreatedConsumer } from './events/consumers/payment-created-consumer'
+import { ProductCreatedConsumer } from './events/consumers/product-created-consumer'
+import { ProductUpdatedConsumer } from './events/consumers/product-updated-consumer'
+// NATS (legacy - có thể remove sau khi migration hoàn tất)
+// import { natsWrapper } from './nats-wrapper'
+// import { ProductCreatedListener } from './events/listeners/product-created-listener'
+// import { ProductUpdatedListener } from './events/listeners/product-updated-listener'
+// import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
+// import { CartCheckoutListener } from './events/listeners/cart-checkout-listener'
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -16,39 +22,56 @@ const requireEnv = (key: string) => {
   return value
 }
 
-
-const connectNats = async (): Promise<void> => {
+/**
+ * Connect to Kafka broker(s)
+ */
+const connectKafka = async (): Promise<void> => {
   try {
-    await natsWrapper.connect(
-      requireEnv('NATS_CLUSTER_ID'),
-      requireEnv('NATS_CLIENT_ID'),
-      requireEnv('NATS_URL')
-    )
+    const brokersEnv = requireEnv('KAFKA_BROKERS')
+    const brokers = brokersEnv.split(',').map(b => b.trim())
+    const clientId = requireEnv('KAFKA_CLIENT_ID')
 
-    natsWrapper.client.on('close', () => {
-      console.log('NATS connection closed!')
+    await kafkaWrapper.connect(brokers, clientId)
+
+    process.on('SIGINT', async () => {
+      console.log('SIGINT received, disconnecting Kafka...')
+      await kafkaWrapper.disconnect()
+      process.exit()
+    })
+    process.on('SIGTERM', async () => {
+      console.log('SIGTERM received, disconnecting Kafka...')
+      await kafkaWrapper.disconnect()
       process.exit()
     })
 
-    process.on('SIGINT', () => natsWrapper.client.close())
-    process.on('SIGTERM', () => natsWrapper.client.close())
-    
-    // Initialize instance of the listener and Listen to events
-    new ProductCreatedListener(natsWrapper.client).listen()
-    new ProductUpdatedListener(natsWrapper.client).listen()
-    new PaymentCreatedListener(natsWrapper.client).listen()
-    new CartCheckoutListener(natsWrapper.client).listen()
+    // Initialize và start consumers
+    const productCreatedConsumer = new ProductCreatedConsumer(
+      kafkaWrapper.createConsumer('orders-product-created')
+    )
+    await productCreatedConsumer.listen()
 
+    const productUpdatedConsumer = new ProductUpdatedConsumer(
+      kafkaWrapper.createConsumer('orders-product-updated')
+    )
+    await productUpdatedConsumer.listen()
+
+    const paymentCreatedListener = new PaymentCreatedConsumer(
+      kafkaWrapper.createConsumer('orders-service')
+    )
+    await paymentCreatedListener.listen()
+
+    console.log('All Kafka consumers started')
   } catch (err) {
-    console.error('NATS connection failed:', err)
+    console.error('Kafka connection failed:', err)
     console.log('Retrying in 5 seconds...')
     await new Promise(resolve => setTimeout(resolve, 5000))
-    return connectNats() // Retry recursively
+    return connectKafka()
   }
 }
 
 const connectMongo = async (): Promise<void> => {
-  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/auth?authSource=admin`
+  // Connect to orders database
+  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/orders?authSource=admin`
 
   try {
     await mongoose.connect(mongoUri)
@@ -64,11 +87,13 @@ const connectMongo = async (): Promise<void> => {
 const start = async () => {
   requireEnv('JWT_KEY')
 
-  await connectNats()
+  await connectKafka()
   await connectMongo()
 
-  app.listen(3000, () => {
-    console.log('Product service listening on port 3000!!!!');
+  const PORT = process.env.PORT
+
+  app.listen(PORT, () => {
+    console.log(`Orders service listening on port ${PORT}`)
   })
 }
 

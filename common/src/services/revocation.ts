@@ -8,8 +8,7 @@ export const isUserRevoked = async (userId: string): Promise<boolean> => {
     const result = await redisClient.sIsMember(REVOKED_SET_KEY, userId)
     return result
   } catch (err) {
-    console.error('[common] isUserRevoked error:', err)
+    console.error('[common] isUserRevoked error: ', err)
     return false
   }
 }
-

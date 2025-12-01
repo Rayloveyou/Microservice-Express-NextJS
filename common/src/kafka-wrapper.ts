@@ -3,7 +3,7 @@ import { Kafka, KafkaConfig, Producer, Consumer, EachMessagePayload, logLevel } 
 /**
  * Kafka Wrapper - Singleton pattern để quản lý Kafka client connection
  * Tương tự như nats-wrapper nhưng dùng cho Kafka
- * 
+ *
  * Kafka architecture:
  * - Topics: Tương đương với NATS subjects (ví dụ: 'product:created')
  * - Partitions: Cho phép parallel processing và scaling
@@ -51,7 +51,7 @@ class KafkaWrapper {
 
   /**
    * Connect to Kafka broker(s)
-   * 
+   *
    * @param brokers - Array of broker URLs (ví dụ: ['kafka-svc:9092'])
    * @param clientId - Unique client identifier cho service này
    */
@@ -98,7 +98,7 @@ class KafkaWrapper {
   /**
    * Create a new consumer instance
    * Mỗi listener sẽ tạo consumer riêng với consumer group riêng
-   * 
+   *
    * @param groupId - Consumer group ID (tương đương queue group name trong NATS)
    * @returns Consumer instance
    */

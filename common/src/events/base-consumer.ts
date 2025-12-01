@@ -32,7 +32,7 @@ export abstract class Consumer<T extends Event> {
   /**
    * Handler function khi nhận được message
    * Implement trong subclass
-   * 
+   *
    * @param data - Parsed event data
    * @param payload - Full Kafka message payload (có thể dùng để commit offset)
    */
@@ -56,7 +56,7 @@ export abstract class Consumer<T extends Event> {
 
   /**
    * Subscribe to topic và bắt đầu consume messages
-   * 
+   *
    * Flow:
    * 1. Connect consumer
    * 2. Subscribe to topic
@@ -68,7 +68,9 @@ export abstract class Consumer<T extends Event> {
     try {
       // Connect consumer
       await this.kafkaConsumer.connect()
-      console.log(`Kafka consumer connected for topic: ${this.topic}, group: ${this.consumerGroupId}`)
+      console.log(
+        `Kafka consumer connected for topic: ${this.topic}, group: ${this.consumerGroupId}`
+      )
 
       // Subscribe to topic
       await this.kafkaConsumer.subscribe({
@@ -110,7 +112,7 @@ export abstract class Consumer<T extends Event> {
 
   /**
    * Parse message value từ buffer/string thành object
-   * 
+   *
    * @param message - Kafka message object
    * @returns Parsed event data
    */
@@ -119,9 +121,7 @@ export abstract class Consumer<T extends Event> {
       throw new Error('Message value is null or undefined')
     }
 
-    const data = typeof message.value === 'string'
-      ? message.value
-      : message.value.toString('utf-8')
+    const data = typeof message.value === 'string' ? message.value : message.value.toString('utf-8')
 
     return JSON.parse(data)
   }

@@ -1,0 +1,25 @@
+{
+  "name": "admin",
+  "version": "1.0.0",
+  "description": "Admin dashboard frontend for ecommerce",
+  "type": "module",
+  "scripts": {
+    "dev": "PORT=${PORT:-3007} next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
+  },
+  "dependencies": {
+    "axios": "^1.13.1",
+    "bootstrap": "^5.3.8",
+    "next": "^16.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.5.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.11.1",
+    "eslint-config-next": "^16.0.1",
+    "eslint-config-prettier": "^9.1.0"
+  }
+}

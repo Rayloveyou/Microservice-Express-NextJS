@@ -2,9 +2,14 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import { app } from './app'
-import { natsWrapper } from './nats-wrapper'
-import { OrderCreatedListener } from './events/listeners/order-created-listener'
-import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
+// Kafka (new)
+import { kafkaWrapper } from './kafka-wrapper'
+import { OrderCreatedConsumer } from './events/consumers/order-created-consumer'
+import { OrderCancelledConsumer } from './events/consumers/order-cancelled-consumer'
+// NATS (legacy)
+// import { natsWrapper } from './nats-wrapper'
+// import { OrderCreatedListener } from './events/listeners/order-created-listener'
+// import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
 
 const requireEnv = (key: string) => {
   const value = process.env[key]
@@ -14,37 +19,45 @@ const requireEnv = (key: string) => {
   return value
 }
 
-
-const connectNats = async (): Promise<void> => {
+const connectKafka = async (): Promise<void> => {
   try {
-    await natsWrapper.connect(
-      requireEnv('NATS_CLUSTER_ID'),
-      requireEnv('NATS_CLIENT_ID'),
-      requireEnv('NATS_URL')
-    )
+    const brokersEnv = requireEnv('KAFKA_BROKERS')
+    const brokers = brokersEnv.split(',').map(b => b.trim())
+    const clientId = requireEnv('KAFKA_CLIENT_ID')
 
-    natsWrapper.client.on('close', () => {
-      console.log('NATS connection closed!')
+    await kafkaWrapper.connect(brokers, clientId)
+
+    process.on('SIGINT', async () => {
+      await kafkaWrapper.disconnect()
+      process.exit()
+    })
+    process.on('SIGTERM', async () => {
+      await kafkaWrapper.disconnect()
       process.exit()
     })
 
-    process.on('SIGINT', () => natsWrapper.client.close())
-    process.on('SIGTERM', () => natsWrapper.client.close())
+    const orderCreatedConsumer = new OrderCreatedConsumer(
+      kafkaWrapper.createConsumer('payments-order-created')
+    )
+    await orderCreatedConsumer.listen()
 
-    // Initialize instance of the listener and Listen to events
-    new OrderCreatedListener(natsWrapper.client).listen()
-    new OrderCancelledListener(natsWrapper.client).listen()
-    
+    const orderCancelledConsumer = new OrderCancelledConsumer(
+      kafkaWrapper.createConsumer('payments-order-cancelled')
+    )
+    await orderCancelledConsumer.listen()
+
+    console.log('All Kafka consumers started')
   } catch (err) {
-    console.error('NATS connection failed:', err)
+    console.error('❌ Kafka connection failed:', err)
     console.log('Retrying in 5 seconds...')
     await new Promise(resolve => setTimeout(resolve, 5000))
-    return connectNats() // Retry recursively
+    return connectKafka()
   }
 }
 
 const connectMongo = async (): Promise<void> => {
-  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/auth?authSource=admin`
+  // Connect to payments database
+  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/payments?authSource=admin`
 
   try {
     await mongoose.connect(mongoUri)
@@ -60,12 +73,16 @@ const connectMongo = async (): Promise<void> => {
 const start = async () => {
   requireEnv('JWT_KEY')
   requireEnv('STRIPE_SECRET_KEY')
-  await connectNats()
+  const PORT = requireEnv('PORT')
+  await connectKafka()
   await connectMongo()
 
-  app.listen(3000, () => {
+  app.listen(parseInt(PORT, 10), () => {
     const sk = process.env.STRIPE_SECRET_KEY || ''
-    console.log('Payment service listening on port 3000. Stripe key loaded:', sk ? `sk_${sk.slice(3,7)}...` : 'MISSING')
+    console.log(
+      `✅ Payments service listening on port ${PORT}. Stripe key loaded:`,
+      sk ? `sk_${sk.slice(3, 7)}...` : 'MISSING'
+    )
   })
 }
 

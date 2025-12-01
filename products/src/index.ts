@@ -1,11 +1,8 @@
-// Load environment variables from .env when running locally
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import { app } from './app'
-import { natsWrapper } from './nats-wrapper'
-import { OrderCreatedListener } from './events/listeners/order-created-listener'
-import { OrderCancelledListener } from './events/listeners/order-cancelled-listener'
-import { PaymentCreatedListener } from './events/listeners/payment-created-listener'
+import { kafkaWrapper } from './kafka-wrapper'
+import { PaymentCreatedConsumer } from './events/consumers/payment-created-consumer'
 import { initializeBucket } from './config/cloudinary'
 
 const requireEnv = (key: string) => {
@@ -16,37 +13,54 @@ const requireEnv = (key: string) => {
   return value
 }
 
-
-const connectNats = async (): Promise<void> => {
+/**
+ * Connect to Kafka broker(s)
+ *
+ * Kafka connection flow:
+ * 1. Connect producer (dùng để publish events)
+ * 2. Create và connect consumers cho từng listener
+ * 3. Subscribe to topics và start consuming
+ */
+const connectKafka = async (): Promise<void> => {
   try {
-    await natsWrapper.connect(
-      requireEnv('NATS_CLUSTER_ID'),
-      requireEnv('NATS_CLIENT_ID'),
-      requireEnv('NATS_URL')
-    )
+    // Parse Kafka brokers từ env (format: "kafka-1:9092,kafka-2:9092" hoặc single "kafka-svc:9092")
+    const brokersEnv = requireEnv('KAFKA_BROKERS')
+    const brokers = brokersEnv.split(',').map(b => b.trim())
+    const clientId = requireEnv('KAFKA_CLIENT_ID')
 
-    natsWrapper.client.on('close', () => {
-      console.log('NATS connection closed!')
+    // Connect Kafka producer
+    await kafkaWrapper.connect(brokers, clientId)
+
+    // Setup graceful shutdown
+    process.on('SIGINT', async () => {
+      console.log('SIGINT received, disconnecting Kafka...')
+      await kafkaWrapper.disconnect()
+      process.exit()
+    })
+    process.on('SIGTERM', async () => {
+      console.log('SIGTERM received, disconnecting Kafka...')
+      await kafkaWrapper.disconnect()
       process.exit()
     })
 
-    process.on('SIGINT', () => natsWrapper.client.close())
-    process.on('SIGTERM', () => natsWrapper.client.close())
+    // Initialize và start listeners
+    // Mỗi listener sẽ tạo consumer riêng với consumer group riêng
+    const paymentCreatedConsumer = new PaymentCreatedConsumer(
+      kafkaWrapper.createConsumer('products-service')
+    )
+    await paymentCreatedConsumer.listen()
 
-    // Initialize instance of the listener and Listen to events
-    new OrderCreatedListener(natsWrapper.client).listen()
-    new OrderCancelledListener(natsWrapper.client).listen()
-    new PaymentCreatedListener(natsWrapper.client).listen()
+    console.log('All Kafka consumers started')
   } catch (err) {
-    console.error('NATS connection failed:', err)
-    console.log('Retrying in 5 seconds...')
+    console.error('Kafka connection failed:', err)
     await new Promise(resolve => setTimeout(resolve, 5000))
-    return connectNats() // Retry recursively
+    return connectKafka() // Retry recursively
   }
 }
 
 const connectMongo = async (): Promise<void> => {
-  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/auth?authSource=admin`
+  // Connect to products database
+  const mongoUri = `mongodb://${requireEnv('MONGO_USERNAME')}:${requireEnv('MONGO_PASSWORD')}@${requireEnv('MONGO_HOST')}:${requireEnv('MONGO_PORT')}/products?authSource=admin`
 
   try {
     await mongoose.connect(mongoUri)
@@ -62,12 +76,15 @@ const connectMongo = async (): Promise<void> => {
 const start = async () => {
   requireEnv('JWT_KEY')
 
-  await connectNats()
+  await connectKafka()
   await connectMongo()
   await initializeBucket()
 
-  app.listen(3000, () => {
-    console.log('Product service listening on port 3000!!!!');
+  const PORT = process.env.PORT
+
+  // Start Express server
+  app.listen(PORT, () => {
+    console.log(`Product service listening on port ${PORT}`)
   })
 }
 

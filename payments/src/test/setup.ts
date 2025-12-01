@@ -5,10 +5,10 @@ import request from 'supertest'
 import jwt from 'jsonwebtoken'
 
 declare global {
-   var signin: (id? : string) => string[]
+  var signin: (id?: string) => string[]
 }
 
-// Mock natsWrapper để test 
+// Mock natsWrapper để test
 jest.mock('../nats-wrapper')
 
 process.env.STRIPE_SECRET_KEY = '< stripe secret key >'
@@ -16,21 +16,19 @@ process.env.STRIPE_SECRET_KEY = '< stripe secret key >'
 let mongo: MongoMemoryServer
 
 // Tạo MongoMemoryServer → kết nối Mongoose
-beforeAll(async () => { 
+beforeAll(async () => {
+  process.env.JWT_KEY = 'test'
+  mongo = await MongoMemoryServer.create()
+  const mongoUri = mongo.getUri()
 
- process.env.JWT_KEY = 'test' 
- mongo = await MongoMemoryServer.create()
- const mongoUri = mongo.getUri()
-
- await mongoose.connect(mongoUri)
+  await mongoose.connect(mongoUri)
 })
 
 // Xóa tất cả data trong collections
 beforeEach(async () => {
-  
   // Clear mocks
   jest.clearAllMocks()
-  
+
   const collections = await mongoose.connection.db?.collections()
 
   if (collections) {
@@ -48,9 +46,9 @@ afterAll(async () => {
   await mongoose.connection.close()
 })
 
-
 // Helper to sign in a user and return session cookie
-global.signin = (id?: string) => { // id is an optional parameter
+global.signin = (id?: string) => {
+  // id is an optional parameter
   // Build a JWT payload.  { id, email }
   const payload = {
     id: id || new mongoose.Types.ObjectId().toHexString(), // if id is not provided, generate a random id
@@ -60,13 +58,12 @@ global.signin = (id?: string) => { // id is an optional parameter
   // Create the JWT
   const token = jwt.sign(payload, process.env.JWT_KEY!)
 
-
   // Build session object {jwt: MY_JWT}
   const session = { jwt: token }
 
   // Turn that session into JSON
   const sessionJSON = JSON.stringify(session)
-  
+
   // Take JSON and encode it as base64
   const base64 = Buffer.from(sessionJSON).toString('base64')
 

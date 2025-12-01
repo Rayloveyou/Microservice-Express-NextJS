@@ -1,0 +1,83 @@
+/* Place for custom admin styles if needed */
+
+/* Force dark backgrounds - override Bootstrap defaults */
+body {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Card backgrounds - must be dark */
+.card {
+  background-color: #1a1a1a !important;
+  border-color: #2a2a2a !important;
+}
+
+.card-body {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+/* Table backgrounds - must be dark */
+.table {
+  background-color: transparent !important;
+  color: #ffffff !important;
+  --bs-table-bg: transparent !important;
+  --bs-table-striped-bg: #1a1a1a !important;
+  --bs-table-hover-bg: #2a2a2a !important;
+}
+
+.table > :not(caption) > * > * {
+  background-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.table thead th {
+  background-color: transparent !important;
+  color: #a1a1aa !important;
+}
+
+.table tbody td {
+  background-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.table-responsive {
+  background-color: transparent !important;
+}
+
+/* List groups */
+.list-group {
+  --bs-list-group-bg: #1a1a1a !important;
+  --bs-list-group-color: #ffffff !important;
+  --bs-list-group-border-color: #2a2a2a !important;
+}
+
+.list-group-item {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border-color: #2a2a2a !important;
+}
+
+/* Fix button text visibility on hover - force white color */
+a.btn-primary,
+a.btn-primary:hover,
+a.btn-primary:focus,
+a.btn-primary:active,
+a.btn-primary:visited {
+  color: white !important;
+  text-decoration: none !important;
+}
+
+button.btn-primary,
+button.btn-primary:hover,
+button.btn-primary:focus,
+button.btn-primary:active {
+  color: white !important;
+}
+
+.btn-sm,
+.btn-sm:hover,
+.btn-sm:focus,
+.btn-sm:active {
+  color: white !important;
+}

@@ -4,9 +4,8 @@ export enum Topics {
 
   OrderCreated = 'order.created',
   OrderCancelled = 'order.cancelled',
-  
+
   PaymentCreated = 'payment.created',
 
   CartCheckout = 'cart.checkout'
 }
-

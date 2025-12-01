@@ -1,74 +1,113 @@
+'use client'
 import { createContext, useContext, useState, useEffect } from 'react'
 import axios from 'axios'
 
 const CartContext = createContext()
 
 export const useCart = () => {
-    const context = useContext(CartContext)
-    if (!context) {
-        // Return default values when context is not available (e.g., not logged in)
-        return { cart: null, cartCount: 0, refreshCart: () => {}, addToCart: () => {}, removeFromCart: () => {} }
+  const context = useContext(CartContext)
+  if (!context) {
+    // Return default values when context is not available (e.g., not logged in)
+    return {
+      cart: null,
+      cartCount: 0,
+      refreshCart: () => {},
+      addToCart: () => {},
+      removeFromCart: () => {}
     }
-    return context
+  }
+  return context
 }
 
-export const CartProvider = ({ children, currentUser }) => {
-    const [cart, setCart] = useState(null)
-    const [cartCount, setCartCount] = useState(0)
+export const CartProvider = ({ children, currentUser, cookiesFromServer }) => {
+  const [cart, setCart] = useState(null)
+  const [cartCount, setCartCount] = useState(0)
 
-    const refreshCart = async () => {
-        if (!currentUser) {
-            setCart(null)
-            setCartCount(0)
-            return
-        }
+  const attemptRefresh = async () => {
+    try {
+      await axios.post('/api/users/refresh', {}, { withCredentials: true })
+    } catch (_err) {
+      // ignore; if refresh fails, user is effectively signed out
+    }
+  }
 
-        try {
-            const { data } = await axios.get('/api/cart')
-            setCart(data)
-            setCartCount(data?.items?.length || 0)
-        } catch (err) {
-            // Cart might be empty or user not logged in
-            setCart(null)
-            setCartCount(0)
-        }
+  const refreshCart = async () => {
+    if (!currentUser?.id) {
+      setCart(null)
+      setCartCount(0)
+      return null
     }
 
-    const addToCart = async (productId, quantity) => {
+    try {
+      const { data } = await axios.get('/api/cart', { withCredentials: true })
+      setCart(data)
+      setCartCount(data?.items?.length || 0)
+      return data
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        await attemptRefresh()
         try {
-            const { data } = await axios.post('/api/cart', { productId, quantity })
-            setCart(data)
-            setCartCount(data?.items?.length || 0)
-            return { success: true }
-        } catch (err) {
-            return { 
-                success: false, 
-                error: err.response?.data?.errors?.[0]?.message || 'Failed to add to cart' 
-            }
-        }
+          const { data } = await axios.get('/api/cart', { withCredentials: true })
+          setCart(data)
+          setCartCount(data?.items?.length || 0)
+          return data
+        } catch (_err) {}
+      }
+      // keep existing cart state on non-auth errors to avoid flashing empty
+      return null
     }
+  }
 
-    const removeFromCart = async (productId) => {
+  const addToCart = async (productId, quantity) => {
+    try {
+      await axios.post('/api/cart', { productId, quantity }, { withCredentials: true })
+      await refreshCart()
+      return { success: true }
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        await attemptRefresh()
         try {
-            await axios.delete(`/api/cart/${productId}`)
-            await refreshCart()
-            return { success: true }
-        } catch (err) {
-            return { 
-                success: false, 
-                error: err.response?.data?.errors?.[0]?.message || 'Failed to remove from cart' 
-            }
-        }
+          await axios.post('/api/cart', { productId, quantity }, { withCredentials: true })
+          await refreshCart()
+          return { success: true }
+        } catch (_err) {}
+      }
+      return {
+        success: false,
+        error: err.response?.data?.errors?.[0]?.message || 'Failed to add to cart'
+      }
     }
+  }
 
-    // Load cart on mount
-    useEffect(() => {
-        refreshCart()
-    }, [currentUser])
+  const removeFromCart = async productId => {
+    try {
+      await axios.delete(`/api/cart/${productId}`, { withCredentials: true })
+      await refreshCart()
+      return { success: true }
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        await attemptRefresh()
+        try {
+          await axios.delete(`/api/cart/${productId}`, { withCredentials: true })
+          await refreshCart()
+          return { success: true }
+        } catch (_err) {}
+      }
+      return {
+        success: false,
+        error: err.response?.data?.errors?.[0]?.message || 'Failed to remove from cart'
+      }
+    }
+  }
 
-    return (
-        <CartContext.Provider value={{ cart, cartCount, refreshCart, addToCart, removeFromCart }}>
-            {children}
-        </CartContext.Provider>
-    )
+  // Load cart on mount
+  useEffect(() => {
+    refreshCart()
+  }, [currentUser])
+
+  return (
+    <CartContext.Provider value={{ cart, cartCount, refreshCart, addToCart, removeFromCart }}>
+      {children}
+    </CartContext.Provider>
+  )
 }

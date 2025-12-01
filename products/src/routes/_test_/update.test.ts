@@ -5,141 +5,128 @@ import { natsWrapper } from '../../nats-wrapper'
 import { Product } from '../../models/product'
 
 it('returns a 404 if not found', async () => {
+  // Tạo 1 id random
+  const id = new mongoose.Types.ObjectId().toHexString()
 
-    // Tạo 1 id random
-    const id = new mongoose.Types.ObjectId().toHexString()
-    
-    await request(app)
-        .put(`/api/products/${id}`)
-        .set('Cookie', global.signin())
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
-        .expect(404)
+  await request(app)
+    .put(`/api/products/${id}`)
+    .set('Cookie', global.signin())
+    .send({
+      title: 'Test Product',
+      price: 100,
+      quantity: 10
+    })
+    .expect(404)
 })
 
 it('returns a 401 if the user is not authenticated', async () => {
-    const id = new mongoose.Types.ObjectId().toHexString()
-    await request(app)
-        .put(`/api/products/${id}`)
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
-        .expect(401)
+  const id = new mongoose.Types.ObjectId().toHexString()
+  await request(app)
+    .put(`/api/products/${id}`)
+    .send({
+      title: 'Test Product',
+      price: 100,
+      quantity: 10
+    })
+    .expect(401)
 })
 
 it('returns 401 if user does not own the product', async () => {
-    const response =  await request(app)
-        .post('/api/products')
-        .set('Cookie', global.signin())
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
+  const response = await request(app).post('/api/products').set('Cookie', global.signin()).send({
+    title: 'Test Product',
+    price: 100,
+    quantity: 10
+  })
 
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', global.signin())
-        .send({
-            title: 'Test Product updated',
-            price: 1000,
-            quantity: 15
-        })
-        .expect(401)
+  await request(app)
+    .put(`/api/products/${response.body.id}`)
+    .set('Cookie', global.signin())
+    .send({
+      title: 'Test Product updated',
+      price: 1000,
+      quantity: 15
+    })
+    .expect(401)
 })
 
 it('returns a 400 if the user provides an invalid title or price', async () => {
-    const cookie = global.signin() 
-    const response =  await request(app)
-        .post('/api/products')
-        .set('Cookie',cookie )
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
+  const cookie = global.signin()
+  const response = await request(app).post('/api/products').set('Cookie', cookie).send({
+    title: 'Test Product',
+    price: 100,
+    quantity: 10
+  })
 
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', cookie)
-        .send({
-            title: '',
-            price: 1000,
-            quantity: 15
-        })
-        .expect(400)
+  await request(app)
+    .put(`/api/products/${response.body.id}`)
+    .set('Cookie', cookie)
+    .send({
+      title: '',
+      price: 1000,
+      quantity: 15
+    })
+    .expect(400)
 
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', cookie)
-        .send({
-            title: '',
-            price: -1000,
-            quantity: 15
-        })
-        .expect(400)
+  await request(app)
+    .put(`/api/products/${response.body.id}`)
+    .set('Cookie', cookie)
+    .send({
+      title: '',
+      price: -1000,
+      quantity: 15
+    })
+    .expect(400)
 })
 
 it('updates the product provided valid inputs', async () => {
-    const cookie = global.signin() 
-    const response =  await request(app)
-        .post('/api/products')
-        .set('Cookie',cookie )
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
+  const cookie = global.signin()
+  const response = await request(app).post('/api/products').set('Cookie', cookie).send({
+    title: 'Test Product',
+    price: 100,
+    quantity: 10
+  })
 
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', cookie)
-        .send({
-            title: 'Test Product updated',
-            price: 1000,
-            quantity: 20
-        })
-        .expect(200)
+  await request(app)
+    .put(`/api/products/${response.body.id}`)
+    .set('Cookie', cookie)
+    .send({
+      title: 'Test Product updated',
+      price: 1000,
+      quantity: 20
+    })
+    .expect(200)
 
-    const productResponse = await request(app)
-        .get(`/api/products/${response.body.id}`)
-        .send()
-        .expect(200)
+  const productResponse = await request(app)
+    .get(`/api/products/${response.body.id}`)
+    .send()
+    .expect(200)
 
-    expect(productResponse.body.title).toEqual('Test Product updated')
-    expect(productResponse.body.price).toEqual(1000)
-    expect(productResponse.body.quantity).toEqual(20)
+  expect(productResponse.body.title).toEqual('Test Product updated')
+  expect(productResponse.body.price).toEqual(1000)
+  expect(productResponse.body.quantity).toEqual(20)
 })
 
 it('publishes an event', async () => {
-    const cookie = global.signin() 
-    const response =  await request(app)
-        .post('/api/products')
-        .set('Cookie',cookie )
-        .send({
-            title: 'Test Product',
-            price: 100,
-            quantity: 10
-        })
+  const cookie = global.signin()
+  const response = await request(app).post('/api/products').set('Cookie', cookie).send({
+    title: 'Test Product',
+    price: 100,
+    quantity: 10
+  })
 
-    await request(app)
-        .put(`/api/products/${response.body.id}`)
-        .set('Cookie', cookie)
-        .send({
-            title: 'Test Product updated',
-            price: 1000,
-            quantity: 15
-        })
-        .expect(200)
+  await request(app)
+    .put(`/api/products/${response.body.id}`)
+    .set('Cookie', cookie)
+    .send({
+      title: 'Test Product updated',
+      price: 1000,
+      quantity: 15
+    })
+    .expect(200)
 
-    expect(natsWrapper.client.publish).toHaveBeenCalled()
+  expect(natsWrapper.client.publish).toHaveBeenCalled()
 })
 
 // Note: The old "rejects updates if product is reserved" test has been removed
-// because we no longer use the orderId reservation system. 
+// because we no longer use the orderId reservation system.
 // Products now use quantity-based stock management instead.

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --watch src --exec \"npm run build && npm run start\"",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "jest --watchAll --no-cache"
   },
   "jest": {
@@ -20,13 +20,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@datnxecommerce/common": "^1.0.0",
+    "@datnxecommerce/common": "^1.0.12",
     "cookie-session": "^2.1.1",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-validator": "^7.3.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.2"
+    "mongoose": "^8.19.2",
+    "redis": "^4.7.0"
   },
   "devDependencies": {
     "@types/cookie-session": "^2.0.49",

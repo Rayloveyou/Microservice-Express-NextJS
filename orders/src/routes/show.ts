@@ -5,25 +5,28 @@ import mongoose from 'mongoose'
 
 const router = express.Router()
 
-
 router.get('/api/orders/:id', requireAuth, async (req: Request, res: Response) => {
+  // Validate if id is a valid MongoDB ObjectId
+  if (!mongoose.Types.ObjectId.isValid(req.params.id!)) {
+    throw new NotFoundError()
+  }
 
-    // Validate if id is a valid MongoDB ObjectId
-    if (!mongoose.Types.ObjectId.isValid(req.params.id!)) {
-        throw new NotFoundError()
-    }
+  // Find the order and populate products inside items
+  const order = await Order.findById(req.params.id).populate('items.product')
 
-    // Find the order and populate products inside items
-    const order = await Order.findById(req.params.id).populate('items.product')
+  if (!order) {
+    throw new NotFoundError()
+  }
 
-    if (!order) {
-        throw new NotFoundError()
-    }
-    // Check if the user is the owner of the order
-    if (order.userId !== req.currentUser!.id) {
-        throw new NotAuthorizedError()
-    }
+  // Allow owner OR admin to view the order
+  const isOwner = order.userId === req.currentUser!.id
+  const isAdmin = req.currentUser!.role === 'admin'
 
-    res.send(order)
+  if (!isOwner && !isAdmin) {
+    throw new NotAuthorizedError()
+  }
+
+  res.send(order)
 })
+
 export { router as showOrderRouter }

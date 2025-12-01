@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin
+  template:
+    metadata:
+      labels:
+        app: admin
+    spec:
+      containers:
+      - name: admin
+        image: datnx/admin:latest
+        env:
+        - name: AUTH_SERVICE_URL
+          value: http://auth-svc:3000
+        - name: PRODUCT_SERVICE_URL
+          value: http://product-svc:3000
+        - name: ORDER_SERVICE_URL
+          value: http://order-svc:3000
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-svc
+spec:
+  selector:
+    app: admin
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+  type: ClusterIP

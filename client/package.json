@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "PORT=${PORT:-3006} next dev",
     "build": "next build",
-    "start": "node server.js"
+    "start": "next start",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
   },
   "keywords": [],
   "author": "",
@@ -20,5 +22,10 @@
     "prop-types": "^15.8.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.11.1",
+    "eslint-config-next": "^16.0.1",
+    "eslint-config-prettier": "^9.1.0"
   }
 }

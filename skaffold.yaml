@@ -8,11 +8,27 @@ build:
   local:
     push: false
   artifacts:
+    # Admin Frontend
+    - image: datnx/admin
+      context: admin
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        infer:
+          - 'pages/**'
+          - 'components/**'
+          - 'styles/**'
+          - 'public/**'
+          - 'next.config.mjs'
+          - 'api/**'
+          - 'lib/**'
     # Client Service
     - image: datnx/client
       context: client
       docker:
         dockerfile: Dockerfile
+        buildArgs:
+          NEXT_PUBLIC_WS_URL: wss://ecommerce.local/ws/notifications
       sync:
         infer:
           - 'pages/**'
@@ -45,6 +61,11 @@ build:
     # Payments Service
     - image: datnx/payment
       context: payments
+      docker:
+        dockerfile: Dockerfile
+    # Notifications Service
+    - image: datnx/notifications
+      context: notifications
       docker:
         dockerfile: Dockerfile
     

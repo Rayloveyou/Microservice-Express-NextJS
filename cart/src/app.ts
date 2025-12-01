@@ -1,6 +1,6 @@
 import express from 'express'
 import cookieSession from 'cookie-session'
-import { errorHandler, NotFoundError, currentUser } from '@datnxecommerce/common'
+import { errorHandler, NotFoundError, currentUser, requireNotRevoked } from '@datnxecommerce/common'
 import { addToCartRouter } from './routes/add-to-cart'
 import { viewCartRouter } from './routes/view-cart'
 import { removeFromCartRouter } from './routes/remove-from-cart'
@@ -10,12 +10,15 @@ const app = express()
 
 app.set('trust proxy', true)
 app.use(express.json())
-app.use(cookieSession({
-  signed: false,
-  secure: process.env.NODE_ENV !== 'test'
-}))
+app.use(
+  cookieSession({
+    signed: false,
+    secure: process.env.NODE_ENV === 'production'
+  })
+)
 
 app.use(currentUser)
+app.use(requireNotRevoked)
 
 // Routes
 app.use(addToCartRouter)

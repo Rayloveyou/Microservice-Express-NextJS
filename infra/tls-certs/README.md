@@ -39,6 +39,7 @@ mkcert -install
 ```
 
 Lệnh này sẽ:
+
 - Tạo một local CA và cài vào system trust store
 - Trình duyệt sẽ tin tưởng các cert do CA này ký
 - Không còn cảnh báo "Not Secure" khi truy cập HTTPS local
@@ -96,7 +97,7 @@ kind: Ingress
 metadata:
   name: ingress-service
   annotations:
-    kubernetes.io/ingress.class: "nginx"
+    kubernetes.io/ingress.class: 'nginx'
 spec:
   tls:
     - hosts:
@@ -104,16 +105,16 @@ spec:
       secretName: ticketing-local-tls
   ingressClassName: nginx
   rules:
-  - host: ticketing.local
-    http:
-      paths:
-      - path: /api/users
-        pathType: Prefix
-        backend:
-          service:
-            name: auth-svc
-            port:
-              number: 3000
+    - host: ticketing.local
+      http:
+        paths:
+          - path: /api/users
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-svc
+                port:
+                  number: 3000
 ```
 
 Apply Ingress:
@@ -134,6 +135,7 @@ open https://ticketing.local
 ```
 
 Kiểm tra trong DevTools:
+
 1. Mở https://ticketing.local
 2. DevTools > Security > View certificate
 3. DevTools > Application > Cookies (kiểm tra Secure cookie)

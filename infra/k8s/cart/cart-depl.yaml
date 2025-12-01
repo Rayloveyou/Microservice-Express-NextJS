@@ -55,16 +55,13 @@ spec:
             configMapKeyRef:
               name: mongo-cart-config
               key: MONGO_PORT
-        - name: NATS_URL
-          value: http://nats-svc:4222
-        - name: NATS_CLUSTER_ID
-          value: ticketing
-        - name: NATS_CLIENT_ID
+        # Kafka configuration (replacing NATS)
+        - name: KAFKA_BROKERS
+          value: kafka-svc:9092
+        - name: KAFKA_CLIENT_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: ORDER_SERVICE_URL
-          value: http://order-svc:3000
 ---
 apiVersion: v1
 kind: Service

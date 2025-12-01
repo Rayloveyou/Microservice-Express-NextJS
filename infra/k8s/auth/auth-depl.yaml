@@ -35,6 +35,10 @@ spec:
             secretKeyRef:
               name: jwt-secret
               key: JWT_KEY
+        - name: REDIS_HOST
+          value: redis-svc
+        - name: REDIS_PORT
+          value: "6379"
         - name: MONGO_USERNAME
           valueFrom:
             secretKeyRef:

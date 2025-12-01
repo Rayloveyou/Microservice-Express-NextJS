@@ -33,7 +33,7 @@ export abstract class Producer<T extends Event> {
 
   /**
    * Publish event vào Kafka topic
-   * 
+   *
    * @param data - Event data payload
    * @param key - Optional message key (dùng cho partition routing)
    *              Nếu không có, Kafka sẽ round-robin partition

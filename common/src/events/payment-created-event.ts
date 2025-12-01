@@ -1,17 +1,17 @@
-import { Topics } from "./topics"
+import { Topics } from './topics'
 
 export interface PaymentCreatedEvent {
-    topic: Topics.PaymentCreated
-    data: {
-        id: string
-        orderId: string
-        stripeId: string
-        userId: string
-        items: {
-            productId: string
-            price: number
-            quantity: number
-            title: string
-        }[]
-    }
+  topic: Topics.PaymentCreated
+  data: {
+    id: string
+    orderId: string
+    stripeId: string
+    userId: string
+    items: {
+      productId: string
+      price: number
+      quantity: number
+      title: string
+    }[]
+  }
 }

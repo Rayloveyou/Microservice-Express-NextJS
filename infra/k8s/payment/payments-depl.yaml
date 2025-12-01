@@ -40,6 +40,8 @@ spec:
             secretKeyRef:
               name: stripe-secret
               key: STRIPE_SECRET_KEY
+        - name: PRODUCT_SERVICE_URL
+          value: http://product-svc:3000
         - name: MONGO_USERNAME
           valueFrom:
             secretKeyRef:
@@ -60,12 +62,10 @@ spec:
             configMapKeyRef:
               name: mongo-payment-config
               key: MONGO_PORT
-        - name: NATS_URL
-          value: http://nats-svc:4222
-        - name: NATS_CLUSTER_ID
-          value: ticketing
-        # make client id unique with name of pod
-        - name: NATS_CLIENT_ID
+        # Kafka configuration (replacing NATS)
+        - name: KAFKA_BROKERS
+          value: kafka-svc:9092
+        - name: KAFKA_CLIENT_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name

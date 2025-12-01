@@ -9,7 +9,7 @@
     // See also https://aka.ms/tsconfig/module
     "module": "commonjs",
     "target": "es6",
-    "types": ["jest", "node"],  // Thêm jest và node types
+    "types": ["jest", "node"], // Thêm jest và node types
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
@@ -33,15 +33,16 @@
     // "noPropertyAccessFromIndexSignature": true,
 
     // Recommended Options
-  "strict": true,
-  "esModuleInterop": true,
-  "allowSyntheticDefaultImports": true,
-  "jsx": "react-jsx",
-  "isolatedModules": true,
-  "noUncheckedSideEffectImports": true,
-  "moduleDetection": "force",
-  "moduleResolution": "node",
-  "verbatimModuleSyntax": false,
-  "skipLibCheck": true,
-  }
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "jsx": "react-jsx",
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "moduleResolution": "node",
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true
+  },
+  "exclude": ["src/**/_test_/**", "src/**/__mocks__/**", "dist"]
 }

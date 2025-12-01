@@ -6,21 +6,21 @@ const router = express.Router()
 
 // Route: Remove product from cart
 router.delete('/api/cart/:productId', requireAuth, async (req: Request, res: Response) => {
-    const { productId } = req.params
-    const userId = req.currentUser!.id
+  const { productId } = req.params
+  const userId = req.currentUser!.id
 
-    const cart = await Cart.findOne({ userId })
+  const cart = await Cart.findOne({ userId })
 
-    if (!cart) {
-        throw new NotFoundError()
-    }
+  if (!cart) {
+    throw new NotFoundError()
+  }
 
-    // Remove item from cart
-    cart.items = cart.items.filter(item => item.productId !== productId)
+  // Remove item from cart
+  cart.items = cart.items.filter(item => item.productId !== productId)
 
-    await cart.save()
+  await cart.save()
 
-    res.status(204).send(cart)
+  res.status(204).send(cart)
 })
 
 export { router as removeFromCartRouter }

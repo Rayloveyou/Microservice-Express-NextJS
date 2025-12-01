@@ -9,7 +9,10 @@ spec:
   tls:
     - hosts:
         - ecommerce.local
-      secretName: ecommerce-local-tls # Create this TLS secret in the same namespace
+      secretName: ecommerce-local-tls # Cert for ecommerce.local
+    - hosts:
+        - admin.ecommerce.local
+      secretName: admin-ecommerce-local-tls # Cert for admin.ecommerce.local
   ingressClassName: nginx
   rules:
   - host: ecommerce.local
@@ -23,6 +26,13 @@ spec:
             port:
               number: 3000
       - path: /api/users
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 3000
+      - path: /api/admin
         pathType: Prefix
         backend:
           service:
@@ -48,6 +58,58 @@ spec:
         backend:
           service:
             name: order-svc
+            port:
+              number: 3000
+      - path: /api/payments
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-svc
+            port:
+              number: 3000
+      - path: /ws/notifications
+        pathType: Prefix
+        backend:
+          service:
+            name: notifications-svc
+            port:
+              number: 3000
+  - host: admin.ecommerce.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-svc
+            port:
+              number: 3000
+      - path: /api/users
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 3000
+      - path: /api/admin
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 3000
+      - path: /api/orders
+        pathType: Prefix
+        backend:
+          service:
+            name: order-svc
+            port:
+              number: 3000
+      - path: /api/products
+        pathType: Prefix
+        backend:
+          service:
+            name: product-svc
             port:
               number: 3000
       - path: /api/payments

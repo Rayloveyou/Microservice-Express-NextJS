@@ -17,4 +17,3 @@ export const requireNotRevoked = async (req: Request, _res: Response, next: Next
 
   next()
 }
-

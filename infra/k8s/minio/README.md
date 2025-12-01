@@ -15,10 +15,12 @@ This application uses **MinIO** - a self-hosted S3-compatible object storage for
 MinIO đã được cấu hình sẵn và sẽ tự động deploy khi chạy `skaffold dev`.
 
 ### Credentials mặc định:
+
 - **Username**: minioadmin
 - **Password**: minioadmin123
 
 ### Ports:
+
 - **API**: 9000 (S3-compatible API)
 - **Console**: 9001 (Web UI)
 
@@ -61,12 +63,13 @@ MinIO API được expose qua: `https://ticketing.local/minio`
 ## Giới hạn
 
 - Max file size: **5MB**
-- Chỉ chấp nhận: **image/*** (jpg, png, gif, webp, etc.)
+- Chỉ chấp nhận: **image/\*** (jpg, png, gif, webp, etc.)
 - Storage: EmptyDir (sẽ mất khi pod restart - production nên dùng PersistentVolume)
 
 ## Production Considerations
 
 Để production, nên:
+
 1. Sử dụng PersistentVolumeClaim thay vì emptyDir
 2. Setup backup cho MinIO data
 3. Hoặc dùng managed S3 (AWS S3, DigitalOcean Spaces, Cloudflare R2)

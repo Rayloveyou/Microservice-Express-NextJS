@@ -26,8 +26,7 @@ export const ensureRedisConnection = async () => {
   }
 }
 
-redisClient.on('error', (err) => {
+redisClient.on('error', err => {
   // eslint-disable-next-line no-console
   console.error('[common] Redis client error:', err)
 })
-
