@@ -39,31 +39,40 @@ const migration_001_create_indexes: MigrationDefinition = {
 
     const collection = db.collection('users')
 
+    // Helper: tạo index an toàn, skip nếu đã tồn tại
+    const safeCreateIndex = async (
+      keys: Record<string, 1 | -1 | 'text'>,
+      options: { name: string; unique?: boolean; sparse?: boolean }
+    ) => {
+      try {
+        await collection.createIndex(keys, options)
+        console.log(`[Auth Migration] Created index: ${options.name}`)
+      } catch (err: any) {
+        // Error code 85: IndexOptionsConflict - index đã tồn tại với tên khác
+        // Error code 86: IndexKeySpecsConflict
+        if (err.code === 85 || err.code === 86) {
+          console.log(`[Auth Migration] Index already exists (skipping): ${options.name}`)
+        } else {
+          throw err
+        }
+      }
+    }
+
     // Index 1: Email (unique)
-    // - Mục đích: Đảm bảo không có 2 users trùng email
-    // - Tự động tạo bởi Mongoose schema { unique: true }
-    // - Nhưng ta define ở đây để rõ ràng và có thể rollback
-    await collection.createIndex({ email: 1 }, { unique: true, name: 'idx_email_unique' })
+    // - Mongoose có thể đã tạo email_1 index tự động
+    // - Nếu đã có, skip để tránh conflict
+    await safeCreateIndex({ email: 1 }, { unique: true, name: 'idx_email_unique' })
 
     // Index 2: Role
-    // - Mục đích: Query nhanh users theo role (admin, user)
-    // - Hữu ích cho admin dashboard: lấy tất cả admins
-    await collection.createIndex({ role: 1 }, { name: 'idx_role' })
+    await safeCreateIndex({ role: 1 }, { name: 'idx_role' })
 
     // Index 3: isBlocked
-    // - Mục đích: Query nhanh users bị block
-    // - Sparse: chỉ index documents có field isBlocked
-    await collection.createIndex({ isBlocked: 1 }, { name: 'idx_is_blocked', sparse: true })
+    await safeCreateIndex({ isBlocked: 1 }, { name: 'idx_is_blocked', sparse: true })
 
-    // Index 4: refreshToken (cho logout/token revocation)
-    // - Mục đích: Tìm nhanh user theo refreshToken
-    // - Sparse: không phải user nào cũng có refreshToken
-    await collection.createIndex(
-      { refreshToken: 1 },
-      { name: 'idx_refresh_token', sparse: true }
-    )
+    // Index 4: refreshToken
+    await safeCreateIndex({ refreshToken: 1 }, { name: 'idx_refresh_token', sparse: true })
 
-    console.log('[Auth Migration] Created indexes for users collection')
+    console.log('[Auth Migration] Finished creating indexes for users collection')
   },
 
   /**
