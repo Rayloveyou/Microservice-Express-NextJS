@@ -140,6 +140,8 @@ html {
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(10px);
+  position: relative;
+  z-index: var(--z-sticky);
 }
 
 .logo-mark {
@@ -253,11 +255,46 @@ html {
 
 /* Header dropdown */
 .header-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: var(--space-sm);
+  min-width: 200px;
+  padding: var(--space-sm);
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   animation: dropdown-fade-in var(--transition-fast);
+  z-index: 9999 !important;
+}
+
+.header-dropdown .dropdown-item {
+  display: block;
+  padding: var(--space-md) var(--space-lg);
+  color: var(--text-primary) !important;
+  text-decoration: none !important;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.header-dropdown .dropdown-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent-cyan) !important;
+}
+
+.header-dropdown .dropdown-item.text-danger {
+  color: var(--error) !important;
+}
+
+.header-dropdown .dropdown-item.text-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error) !important;
+}
+
+.header-dropdown .dropdown-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--space-sm) 0;
 }
 
 @keyframes dropdown-fade-in {
@@ -1355,4 +1392,180 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* =============================================================================
+   PAGE LOAD ANIMATIONS
+   ============================================================================= */
+
+/* Base animation keyframes */
+@keyframes page-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes page-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes page-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Animation utility classes */
+.animate-fade-up {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-fade-in-scale {
+  animation: page-fade-in-scale 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-slide-left {
+  animation: page-slide-left 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-slide-right {
+  animation: page-slide-right 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Staggered animation delays */
+.delay-100 { animation-delay: 0.1s; opacity: 0; }
+.delay-200 { animation-delay: 0.2s; opacity: 0; }
+.delay-300 { animation-delay: 0.3s; opacity: 0; }
+.delay-400 { animation-delay: 0.4s; opacity: 0; }
+.delay-500 { animation-delay: 0.5s; opacity: 0; }
+.delay-600 { animation-delay: 0.6s; opacity: 0; }
+
+/* Hero section animations */
+.hero {
+  animation: page-fade-in-scale 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.hero .badge-brand {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+.hero h1 {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards;
+  opacity: 0;
+}
+
+.hero p {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards;
+  opacity: 0;
+}
+
+.hero .btn {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.5s forwards;
+  opacity: 0;
+}
+
+/* Header animation */
+.app-header {
+  animation: page-fade-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Section titles animation */
+.section-title {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Product cards staggered animation */
+.card-product {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.card-product:nth-child(1) { animation-delay: 0.1s; }
+.card-product:nth-child(2) { animation-delay: 0.15s; }
+.card-product:nth-child(3) { animation-delay: 0.2s; }
+.card-product:nth-child(4) { animation-delay: 0.25s; }
+.card-product:nth-child(5) { animation-delay: 0.3s; }
+.card-product:nth-child(6) { animation-delay: 0.35s; }
+.card-product:nth-child(7) { animation-delay: 0.4s; }
+.card-product:nth-child(8) { animation-delay: 0.45s; }
+.card-product:nth-child(9) { animation-delay: 0.5s; }
+.card-product:nth-child(10) { animation-delay: 0.55s; }
+.card-product:nth-child(11) { animation-delay: 0.6s; }
+.card-product:nth-child(12) { animation-delay: 0.65s; }
+
+/* Footer animation */
+.app-footer {
+  animation: page-fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Card general animation */
+.card {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Form containers animation */
+.auth-container,
+.auth-card {
+  animation: page-fade-in-scale 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Alert animations */
+.alert {
+  animation: page-fade-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Search bar animation */
+.search-container {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+/* Table animation */
+.table-responsive {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Page content wrapper animation */
+.page-content {
+  animation: page-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

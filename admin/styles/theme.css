@@ -1065,3 +1065,159 @@ dd {
 .col, [class*="col-"] {
   color: var(--text-primary) !important;
 }
+
+/* =============================================================================
+   PAGE LOAD ANIMATIONS
+   ============================================================================= */
+
+/* Base animation keyframes */
+@keyframes admin-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes admin-fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes admin-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes admin-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Admin layout animations */
+.admin-sidebar {
+  animation: admin-slide-left 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.admin-header {
+  animation: admin-fade-up 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.admin-content {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s forwards;
+  opacity: 0;
+}
+
+/* Page header animation */
+.page-header {
+  animation: admin-fade-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.page-title {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s forwards;
+  opacity: 0;
+}
+
+.page-subtitle {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+/* Stats cards staggered animation */
+.stat-card {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.stat-card:nth-child(1) { animation-delay: 0.1s; }
+.stat-card:nth-child(2) { animation-delay: 0.15s; }
+.stat-card:nth-child(3) { animation-delay: 0.2s; }
+.stat-card:nth-child(4) { animation-delay: 0.25s; }
+.stat-card:nth-child(5) { animation-delay: 0.3s; }
+.stat-card:nth-child(6) { animation-delay: 0.35s; }
+
+/* Cards animation */
+.card {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Table animation */
+.table-responsive {
+  animation: admin-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Form animation */
+.admin-form,
+form {
+  animation: admin-fade-in-scale 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Alert animations */
+.alert {
+  animation: admin-fade-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Button actions animation */
+.btn-group,
+.action-buttons {
+  animation: admin-fade-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+/* Sidebar nav items staggered animation */
+.sidebar-nav-item {
+  animation: admin-slide-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.sidebar-nav-item:nth-child(1) { animation-delay: 0.05s; }
+.sidebar-nav-item:nth-child(2) { animation-delay: 0.1s; }
+.sidebar-nav-item:nth-child(3) { animation-delay: 0.15s; }
+.sidebar-nav-item:nth-child(4) { animation-delay: 0.2s; }
+.sidebar-nav-item:nth-child(5) { animation-delay: 0.25s; }
+.sidebar-nav-item:nth-child(6) { animation-delay: 0.3s; }
+.sidebar-nav-item:nth-child(7) { animation-delay: 0.35s; }
+.sidebar-nav-item:nth-child(8) { animation-delay: 0.4s; }
+
+/* Auth pages animation */
+.auth-error-container,
+.auth-error-card {
+  animation: admin-fade-in-scale 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Modal animation override */
+.modal-content {
+  animation: admin-fade-in-scale 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

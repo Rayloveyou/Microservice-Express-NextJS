@@ -1,15 +1,18 @@
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import mongoose from 'mongoose'
-import { app } from '../app'
-import request from 'supertest'
 import jwt from 'jsonwebtoken'
+
+// Mock uuid to avoid ESM issues
+jest.mock('uuid', () => ({
+  v4: jest.fn(() => 'test-uuid-1234')
+}))
+
+// Mock kafka-wrapper
+jest.mock('../kafka-wrapper')
 
 declare global {
   var signin: () => string[]
 }
-
-// Mock natsWrapper để test
-jest.mock('../nats-wrapper')
 
 let mongo: MongoMemoryServer
 

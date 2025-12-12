@@ -2,9 +2,10 @@ import axios from 'axios'
 
 import { fetchCurrentUser } from '../../../lib/server-auth'
 import { getCookieHeader } from '../../../lib/get-cookie-header'
+import { requireEnv } from '../../../lib/require-env'
 
 export const metadata = {
-  title: 'User Detail'
+  title: 'User Detail | Admin'
 }
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,7 @@ export default async function AdminUserDetailPage({ params }) {
   const currentUser = await fetchCurrentUser(cookieHeader)
   const isSignedIn = !!currentUser
 
-  const apiBase = process.env.API_GATEWAY_URL?.trim()
+  const apiBase = requireEnv('API_GATEWAY_URL')
   const { userId } = await params
 
   let user = null

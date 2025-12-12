@@ -1,5 +1,6 @@
 import { Producer as KafkaJsProducer } from 'kafkajs'
 import { Topics } from './topics'
+import { Logger, createLogger } from '../logger'
 
 /**
  * Base Producer cho Kafka
@@ -27,8 +28,14 @@ export abstract class Producer<T extends Event> {
    */
   protected kafkaProducer: KafkaJsProducer
 
-  constructor(producer: KafkaJsProducer) {
+  /**
+   * Structured logger instance
+   */
+  protected logger: Logger
+
+  constructor(producer: KafkaJsProducer, serviceName?: string) {
     this.kafkaProducer = producer
+    this.logger = createLogger('ecommerce', serviceName || 'unknown-service')
   }
 
   /**
@@ -39,6 +46,8 @@ export abstract class Producer<T extends Event> {
    *              Nếu không có, Kafka sẽ round-robin partition
    */
   async publish(data: T['data'], key?: string): Promise<void> {
+    const startTime = Date.now()
+    
     try {
       // Topic name = event topic
       const topic = this.topic
@@ -55,14 +64,27 @@ export abstract class Producer<T extends Event> {
       }
 
       // Send message to topic
-      await this.kafkaProducer.send({
+      const result = await this.kafkaProducer.send({
         topic,
         messages: [message]
       })
 
-      console.log(`Event published to topic: ${topic}`, key ? `(key: ${key})` : '')
+      const duration = Date.now() - startTime
+      
+      this.logger.kafkaEventPublished(topic, data, {
+        key: key || undefined,
+        partition: result[0]?.partition,
+        offset: result[0]?.baseOffset,
+        duration_ms: duration
+      })
     } catch (err) {
-      console.error(`Failed to publish event to topic ${this.topic}:`, err)
+      const duration = Date.now() - startTime
+      
+      this.logger.error('Failed to publish Kafka event', err as Error, {
+        topic: this.topic,
+        key: key || undefined,
+        duration_ms: duration
+      })
       throw err
     }
   }

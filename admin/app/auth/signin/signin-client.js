@@ -7,16 +7,29 @@ export default function AdminSigninForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const onSubmit = async e => {
     e.preventDefault()
     setError('')
+    setLoading(true)
     try {
-      await axios.post('/api/users/signin', { email, password })
-      window.location.href = '/dashboard'
+      const { data } = await axios.post('/api/users/signin', { email, password })
+
+      // Check if user has admin role
+      if (data.role !== 'admin') {
+        setError('Access denied. Admin privileges required.')
+        // Sign out non-admin user
+        await axios.post('/api/users/signout')
+        setLoading(false)
+        return
+      }
+
+      window.location.href = '/'
     } catch (err) {
       const msg = err?.response?.data?.errors?.[0]?.message || 'Sign in failed'
       setError(msg)
+      setLoading(false)
     }
   }
 
@@ -49,8 +62,8 @@ export default function AdminSigninForm() {
                   />
                 </div>
                 {error && <div className="alert alert-danger py-2">{error}</div>}
-                <button type="submit" className="btn btn-primary w-100">
-                  Sign In
+                <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+                  {loading ? 'Signing in...' : 'Sign In'}
                 </button>
               </form>
             </div>

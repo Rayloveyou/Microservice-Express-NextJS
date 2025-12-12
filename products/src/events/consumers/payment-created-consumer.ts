@@ -16,22 +16,35 @@ import { kafkaWrapper } from '../../kafka-wrapper'
  */
 export class PaymentCreatedConsumer extends Consumer<PaymentCreatedEvent> {
   readonly topic = Topics.PaymentCreated
-  consumerGroupId = consumerGroupId
+  readonly consumerGroupId = consumerGroupId
+
+  constructor(consumer: any) {
+    super(consumer, { fromBeginning: false })
+  }
 
   async onMessage(data: PaymentCreatedEvent['data'], payload: EachMessagePayload): Promise<void> {
-    console.log('Payment completed for order:', data.orderId)
+    console.log('Payment completed for order', {
+      order_id: data.orderId,
+      items_count: data.items.length
+    })
 
     for (const item of data.items) {
       const productId = item.productId
 
       if (typeof productId !== 'string' || productId.length !== 24) {
-        console.error('Invalid productId in PaymentCreated event:', productId)
+        console.warn('Invalid productId in PaymentCreated event', {
+          product_id: productId,
+          order_id: data.orderId
+        })
         continue
       }
 
       const product = await Product.findById(productId)
       if (!product) {
-        console.error('Product not found when publishing update:', productId)
+        console.warn('Product not found when publishing update', {
+          product_id: productId,
+          order_id: data.orderId
+        })
         continue
       }
 

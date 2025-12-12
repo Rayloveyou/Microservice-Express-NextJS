@@ -62,6 +62,28 @@ class KafkaWrapper {
         clientId,
         brokers,
         logLevel: logLevel.ERROR,
+        // Custom logger để filter ra rebalancing messages
+        logCreator: () => {
+          return ({ namespace, level, label, log }) => {
+            // Bỏ qua heartbeat rebalancing messages
+            if (log.message && typeof log.message === 'string' && 
+                log.message.includes('group is rebalancing')) {
+              return
+            }
+            
+            // Chỉ log ERROR trở lên
+            if (level >= logLevel.ERROR) {
+              const { message, timestamp, ...extra } = log
+              console.log(JSON.stringify({ 
+                level: label, 
+                timestamp: timestamp || new Date().toISOString(),
+                logger: namespace,
+                message,
+                ...extra 
+              }))
+            }
+          }
+        },
         // Retry config cho production
         retry: {
           retries: 8,
@@ -110,13 +132,23 @@ class KafkaWrapper {
     return this._kafka.consumer({
       groupId,
       // Session timeout: thời gian chờ trước khi coi consumer là dead
-      sessionTimeout: 30000,
+      // Tăng lên cho Docker/dev environment để tránh rebalancing liên tục
+      sessionTimeout: 60000, // 60s (was 30s)
       // Heartbeat interval: tần suất gửi heartbeat
       heartbeatInterval: 3000,
+      // Rebalance timeout: thời gian tối đa cho rebalance
+      rebalanceTimeout: 60000,
       // Max bytes per partition
       maxBytesPerPartition: 1048576, // 1MB
       // Read from beginning nếu consumer group mới
-      readUncommitted: false
+      readUncommitted: false,
+      // Retry config
+      retry: {
+        retries: 8,
+        initialRetryTime: 100,
+        multiplier: 2,
+        maxRetryTime: 30000
+      }
     })
   }
 

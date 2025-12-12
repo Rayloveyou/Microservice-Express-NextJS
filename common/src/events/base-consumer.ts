@@ -1,5 +1,6 @@
 import { Consumer as KafkaJsConsumer, EachMessagePayload } from 'kafkajs'
 import { Topics } from './topics'
+import { Logger, createLogger } from '../logger'
 
 // Re-export EachMessagePayload để các services có thể import
 export type { EachMessagePayload }
@@ -49,9 +50,15 @@ export abstract class Consumer<T extends Event> {
    */
   protected fromBeginning: boolean
 
-  constructor(consumer: KafkaJsConsumer, options?: { fromBeginning?: boolean }) {
+  /**
+   * Structured logger instance
+   */
+  protected logger: Logger
+
+  constructor(consumer: KafkaJsConsumer, options?: { fromBeginning?: boolean; serviceName?: string }) {
     this.kafkaConsumer = consumer
     this.fromBeginning = options?.fromBeginning ?? false
+    this.logger = createLogger('ecommerce', options?.serviceName || 'unknown-service')
   }
 
   /**
@@ -68,9 +75,11 @@ export abstract class Consumer<T extends Event> {
     try {
       // Connect consumer
       await this.kafkaConsumer.connect()
-      console.log(
-        `Kafka consumer connected for topic: ${this.topic}, group: ${this.consumerGroupId}`
-      )
+      this.logger.info('Kafka consumer connected', {
+        topic: this.topic,
+        consumer_group: this.consumerGroupId,
+        from_beginning: this.fromBeginning
+      })
 
       // Subscribe to topic
       await this.kafkaConsumer.subscribe({
@@ -86,26 +95,52 @@ export abstract class Consumer<T extends Event> {
         // Process mỗi message
         eachMessage: async (payload: EachMessagePayload) => {
           const { topic, partition, message } = payload
+          const startTime = Date.now()
 
           try {
             // Parse message data
             const data = this.parseMessage(message)
 
+            this.logger.kafkaEventReceived(topic, data, {
+              partition,
+              offset: message.offset,
+              consumer_group: this.consumerGroupId
+            })
+
             // Call handler
             await this.onMessage(data, payload)
+
+            const duration = Date.now() - startTime
+            this.logger.kafkaEventProcessed(topic, data, duration, {
+              partition,
+              offset: message.offset,
+              consumer_group: this.consumerGroupId
+            })
 
             // Note: Offset commit được handle tự động bởi Kafka
             // Nếu onMessage throw error, offset sẽ không commit
             // Message sẽ được retry (nếu có retry logic) hoặc move to DLQ
           } catch (err) {
-            console.error(`Error processing message from topic ${this.topic}:`, err)
+            const duration = Date.now() - startTime
+            const data = this.parseMessage(message)
+            
+            this.logger.kafkaEventFailed(topic, data, err as Error, {
+              partition,
+              offset: message.offset,
+              consumer_group: this.consumerGroupId,
+              duration_ms: duration
+            })
+            
             // Có thể implement retry logic hoặc DLQ ở đây
             throw err // Re-throw để Kafka biết message chưa được process thành công
           }
         }
       })
     } catch (err) {
-      console.error(`Error setting up Kafka consumer for ${this.topic}:`, err)
+      this.logger.error('Error setting up Kafka consumer', err as Error, {
+        topic: this.topic,
+        consumer_group: this.consumerGroupId
+      })
       throw err
     }
   }
@@ -133,9 +168,15 @@ export abstract class Consumer<T extends Event> {
   async disconnect(): Promise<void> {
     try {
       await this.kafkaConsumer.disconnect()
-      console.log(`Kafka consumer disconnected for topic: ${this.topic}`)
+      this.logger.info('Kafka consumer disconnected', {
+        topic: this.topic,
+        consumer_group: this.consumerGroupId
+      })
     } catch (err) {
-      console.error(`Error disconnecting Kafka consumer:`, err)
+      this.logger.error('Error disconnecting Kafka consumer', err as Error, {
+        topic: this.topic,
+        consumer_group: this.consumerGroupId
+      })
     }
   }
 }

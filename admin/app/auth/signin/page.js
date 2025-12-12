@@ -13,7 +13,7 @@ export default async function AdminSigninPage() {
   const currentUser = await fetchCurrentUser(cookieHeader)
 
   if (currentUser && currentUser.role === 'admin') {
-    redirect('/dashboard')
+    redirect('/')
   }
 
   return <AdminSigninForm />

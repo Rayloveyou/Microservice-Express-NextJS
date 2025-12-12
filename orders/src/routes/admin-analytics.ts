@@ -4,19 +4,44 @@ import { requireAuth, requireAdmin } from '@datnxecommerce/common';
 
 const router = express.Router();
 
+// ISO date format regex for validation
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_DATE_RANGE_DAYS = 90;
+
+const validateAndParseDate = (dateStr: string | undefined, defaultDate: Date): Date | null => {
+  if (!dateStr) return defaultDate;
+  if (!ISO_DATE_REGEX.test(dateStr)) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return date;
+};
+
 router.get(
   '/api/orders/admin/analytics',
   requireAuth,
   requireAdmin,
   async (req: Request, res: Response) => {
     try {
-      // Get date range from query params or default to last 7 days
-      const endDate = req.query.endDate
-        ? new Date(req.query.endDate as string)
-        : new Date();
-      const startDate = req.query.startDate
-        ? new Date(req.query.startDate as string)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      // Validate and sanitize date inputs
+      const defaultEndDate = new Date();
+      const defaultStartDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      const endDate = validateAndParseDate(req.query.endDate as string, defaultEndDate);
+      const startDate = validateAndParseDate(req.query.startDate as string, defaultStartDate);
+
+      if (!endDate || !startDate) {
+        return res.status(400).send({
+          errors: [{ message: 'Invalid date format. Use YYYY-MM-DD.' }]
+        });
+      }
+
+      // Validate date range (max 90 days)
+      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > MAX_DATE_RANGE_DAYS || daysDiff < 0) {
+        return res.status(400).send({
+          errors: [{ message: `Date range must be between 1 and ${MAX_DATE_RANGE_DAYS} days.` }]
+        });
+      }
 
       // Get daily orders aggregation (only completed orders for the graph)
       const dailyOrdersRaw = await Order.aggregate([
@@ -149,7 +174,8 @@ router.get(
         recentOrders,
       });
     } catch (error) {
-      console.error('Analytics error:', error);
+      // Log error without sensitive details in production
+      console.error('Analytics error:', error instanceof Error ? error.message : 'Unknown error');
       res.status(500).send({ errors: [{ message: 'Failed to fetch analytics' }] });
     }
   }

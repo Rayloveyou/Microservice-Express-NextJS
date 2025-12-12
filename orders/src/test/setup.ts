@@ -6,9 +6,6 @@ declare global {
   var signin: () => string[]
 }
 
-// Mock natsWrapper để test
-jest.mock('../nats-wrapper')
-
 let mongo: MongoMemoryServer
 
 // Tạo MongoMemoryServer → kết nối Mongoose

@@ -2,6 +2,7 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import { app } from './app'
+import { runAuthMigrations } from './migrations'
 
 const start = async () => {
   if (!process.env.JWT_KEY) {
@@ -20,6 +21,11 @@ const start = async () => {
   try {
     await mongoose.connect(mongoUri) // Connect to MongoDB
     console.log('Connected to MongoDB')
+
+    // Run pending migrations after successful connection
+    // Migrations chạy tự động khi service khởi động
+    // Chỉ chạy những migrations chưa được thực thi
+    await runAuthMigrations()
   } catch (err) {
     console.error('MongoDB connection failed:', err)
     console.log('Retrying in 5 seconds...')

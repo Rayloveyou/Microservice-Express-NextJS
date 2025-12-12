@@ -4,9 +4,10 @@ import Link from 'next/link'
 import ProductsClient from './products-client'
 import { fetchCurrentUser } from '../../lib/server-auth'
 import { getCookieHeader } from '../../lib/get-cookie-header'
+import { requireEnv } from '../../lib/require-env'
 
 export const metadata = {
-  title: 'Products'
+  title: 'Products | Admin'
 }
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,7 @@ export default async function ProductsPage() {
   const currentUser = await fetchCurrentUser(cookieHeader)
   const isSignedIn = !!currentUser
 
-  const gatewayUrl = process.env.API_GATEWAY_URL
+  const gatewayUrl = requireEnv('API_GATEWAY_URL')
   let products = []
 
   if (isSignedIn) {
@@ -24,36 +25,38 @@ export default async function ProductsPage() {
       const { data } = await axios.get(`${gatewayUrl}/api/products?limit=1000`, {
         headers: { Cookie: cookieHeader }
       })
-      // Handle new pagination response format
       if (data.products) {
         products = data.products
       } else {
-        // Fallback for old format
         products = Array.isArray(data) ? data : []
       }
-    } catch {
-      products = []
+    } catch (err) {
+      console.error('Failed to fetch products:', err?.message)
     }
   }
 
   return (
     <>
       {!isSignedIn ? (
-        <div className="alert alert-warning">
-          Please sign in to view products. <a href="/auth/signin">Sign in</a>
+        <div className="auth-error-container">
+          <div className="auth-error-card">
+            <h2>Authentication Required</h2>
+            <p>Please sign in to view products.</p>
+            <a href="/auth/signin" className="btn btn-primary">
+              Sign In
+            </a>
+          </div>
         </div>
       ) : (
         <>
-          <div className="row mb-4">
-            <div className="col d-flex justify-content-between align-items-center">
-              <div>
-                <h1 className="h3 mb-1">Products</h1>
-                <p className="text-muted mb-0">Manage all products in the catalog.</p>
-              </div>
-              <Link href="/products/new" className="btn btn-primary btn-sm">
-                Create Product
-              </Link>
+          <div className="page-header">
+            <div>
+              <h1 className="page-title">Products</h1>
+              <p className="page-subtitle">Manage all products in the catalog.</p>
             </div>
+            <Link href="/products/new" className="btn btn-primary">
+              Create Product
+            </Link>
           </div>
 
           <ProductsClient products={products} />

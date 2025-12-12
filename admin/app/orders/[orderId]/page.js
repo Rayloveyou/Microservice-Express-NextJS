@@ -2,9 +2,10 @@ import axios from 'axios'
 
 import { fetchCurrentUser } from '../../../lib/server-auth'
 import { getCookieHeader } from '../../../lib/get-cookie-header'
+import { requireEnv } from '../../../lib/require-env'
 
 export const metadata = {
-  title: 'Order Detail'
+  title: 'Order Detail | Admin'
 }
 
 export const dynamic = 'force-dynamic'
@@ -14,8 +15,8 @@ export default async function AdminOrderDetailPage({ params }) {
   const currentUser = await fetchCurrentUser(cookieHeader)
   const isSignedIn = !!currentUser
 
-  const gatewayUrl = process.env.API_GATEWAY_URL
-  const { orderId } = await params // NextJS ver mới thì params trả về Promise
+  const gatewayUrl = requireEnv('API_GATEWAY_URL')
+  const { orderId } = await params
 
   let order = null
   if (isSignedIn) {

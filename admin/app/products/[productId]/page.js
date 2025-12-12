@@ -2,10 +2,11 @@ import axios from 'axios'
 
 import { fetchCurrentUser } from '../../../lib/server-auth'
 import { getCookieHeader } from '../../../lib/get-cookie-header'
+import { requireEnv } from '../../../lib/require-env'
 import ProductEditFormClient from './product-edit-form-client'
 
 export const metadata = {
-  title: 'Edit Product'
+  title: 'Edit Product | Admin'
 }
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +16,7 @@ export default async function AdminEditProductPage({ params }) {
   const currentUser = await fetchCurrentUser(cookieHeader)
   const isSignedIn = !!currentUser
 
-  const gatewayUrl = process.env.API_GATEWAY_URL
+  const gatewayUrl = requireEnv('API_GATEWAY_URL')
   const { productId } = await params
 
   let product = null

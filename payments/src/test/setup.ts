@@ -8,10 +8,12 @@ declare global {
   var signin: (id?: string) => string[]
 }
 
-// Mock natsWrapper để test
-jest.mock('../nats-wrapper')
+// Mock kafka-wrapper before any imports that use it
+jest.mock('../kafka-wrapper')
 
 process.env.STRIPE_SECRET_KEY = '< stripe secret key >'
+process.env.PRODUCT_SERVICE_URL = 'http://products-srv:3000'
+process.env.SKIP_REDIS_CHECK = 'true' // Skip Redis connection in tests
 
 let mongo: MongoMemoryServer
 

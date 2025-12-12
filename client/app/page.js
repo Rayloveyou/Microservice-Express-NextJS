@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 
 import { fetchCurrentUser } from '../lib/server-auth'
 import { getCookieHeader } from '../lib/get-cookie-header'
+import { requireEnv } from '../lib/require-env'
 import CategoryNav from '../components/category-nav'
 import SearchBar from '../components/search-bar'
 import Pagination from '../components/pagination'
@@ -30,7 +31,7 @@ export default async function LandingPage({ searchParams: searchParamsPromise })
   let pagination = null
 
   try {
-    const gatewayUrl = process.env.API_GATEWAY_URL
+    const gatewayUrl = requireEnv('API_GATEWAY_URL')
     const params = new URLSearchParams({
       page,
       limit: '12'
@@ -42,7 +43,8 @@ export default async function LandingPage({ searchParams: searchParamsPromise })
     const requestUrl = `${gatewayUrl}/api/products?${params.toString()}`
 
     const res = await axios.get(requestUrl, {
-      headers: { Cookie: cookieHeader }
+      headers: { Cookie: cookieHeader },
+      timeout: 10000
     })
 
     // Handle pagination response format
@@ -53,6 +55,7 @@ export default async function LandingPage({ searchParams: searchParamsPromise })
       products = Array.isArray(res.data) ? res.data : []
     }
   } catch (err) {
+    console.error('Failed to fetch products:', err?.message)
     products = []
   }
 

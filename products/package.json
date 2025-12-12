@@ -14,6 +14,13 @@
     "testEnvironment": "node",
     "setupFilesAfterEnv": [
       "./src/test/setup.ts"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(uuid)/)"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/"
     ]
   },
   "keywords": [],

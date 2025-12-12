@@ -20,6 +20,9 @@ export * from './kafka-wrapper'
 // Re-export Kafka types
 export type { EachMessagePayload } from 'kafkajs'
 
+// Structured logging
+export * from './logger'
+
 export * from './events/topics'
 export * from './events/product-created-event'
 export * from './events/product-updated-event'

@@ -62,6 +62,10 @@ const connectMongo = async (): Promise<void> => {
   try {
     await mongoose.connect(mongoUri)
     console.log('Connected to MongoDB')
+
+    // Run pending migrations
+    const { runPaymentsMigrations } = await import('./migrations')
+    await runPaymentsMigrations()
   } catch (err) {
     console.error('MongoDB connection failed:', err)
     console.log('Retrying in 5 seconds...')

@@ -1,31 +1,34 @@
 import 'bootstrap/dist/css/bootstrap.min.css'
 import '../styles/globals.css'
 import '../styles/theme.css'
-import SessionRefresher from '../components/session-refresher'
-import AdminSidebar from '../components/admin-sidebar'
-import AdminHeader from '../components/admin-header'
+import AdminLayoutWrapper from '../components/admin-layout-wrapper'
+import { NotificationProvider } from '../context/notification-context'
+import { LoadingProvider } from '../context/loading-context'
+import { fetchCurrentUser } from '../lib/server-auth'
+import { getCookieHeader } from '../lib/get-cookie-header'
 
 export const metadata = {
   title: 'E-Commerce Admin - Dashboard',
   description: 'Modern admin dashboard for e-commerce management',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/favicon.svg'
   }
 }
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const cookieHeader = await getCookieHeader()
+  const currentUser = await fetchCurrentUser(cookieHeader)
+
   return (
     <html lang="en">
       <body>
-        <SessionRefresher />
-        <div className="admin-layout">
-          <AdminSidebar />
-
-          <div className="admin-main">
-            <AdminHeader />
-            <main className="admin-content">{children}</main>
-          </div>
-        </div>
+        <LoadingProvider>
+          <NotificationProvider>
+            <AdminLayoutWrapper currentUser={currentUser}>
+              {children}
+            </AdminLayoutWrapper>
+          </NotificationProvider>
+        </LoadingProvider>
       </body>
     </html>
   )

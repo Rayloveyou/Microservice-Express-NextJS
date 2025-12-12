@@ -8,16 +8,31 @@ export default function SigninClient() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const onSubmit = async e => {
     e.preventDefault()
     setError('')
+    setLoading(true)
     try {
-      await axios.post('/api/users/signin', { email, password })
+      const { data } = await axios.post(
+        '/api/users/signin',
+        { email, password },
+        { withCredentials: true }
+      )
+
+      // Check if user is blocked
+      if (data.isBlocked) {
+        setError('Your account has been blocked. Please contact support.')
+        setLoading(false)
+        return
+      }
+
       window.location.href = '/'
     } catch (err) {
       const msg = err?.response?.data?.errors?.[0]?.message || 'Sign in failed'
       setError(msg)
+      setLoading(false)
     }
   }
 
@@ -45,6 +60,7 @@ export default function SigninClient() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
+                disabled={loading}
                 placeholder="you@example.com"
               />
             </div>
@@ -59,6 +75,7 @@ export default function SigninClient() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
+                disabled={loading}
                 placeholder="••••••••"
               />
             </div>
@@ -68,8 +85,8 @@ export default function SigninClient() {
               </div>
             )}
             <div className="d-flex justify-content-between align-items-center">
-              <button className="btn btn-brand" type="submit">
-                Sign in
+              <button className="btn btn-brand" type="submit" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign in'}
               </button>
               <Link href="/auth/signup" className="text-decoration-none">
                 Need an account? Sign up

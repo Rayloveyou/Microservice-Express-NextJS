@@ -123,14 +123,11 @@ export default function Header({ currentUser }) {
                 </button>
 
                 {showMenu && (
-                  <div
-                    className="position-absolute end-0 mt-2 p-2 bg-white text-dark rounded shadow-sm header-dropdown"
-                    style={{ minWidth: '200px', zIndex: 1000 }}
-                  >
+                  <div className="header-dropdown">
                     <Link href="/profile" className="dropdown-item">
                       Profile
                     </Link>
-                    <div className="dropdown-divider my-1" />
+                    <div className="dropdown-divider" />
                     <Link href="/auth/signout" className="dropdown-item text-danger">
                       Sign Out
                     </Link>
